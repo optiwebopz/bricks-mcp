@@ -196,7 +196,7 @@ final class Plugin {
 	public function add_action_links( array $links ): array {
 		$settings_link = sprintf(
 			'<a href="%s">%s</a>',
-			esc_url( admin_url( 'options-general.php?page=bricks-mcp' ) ),
+			esc_url( admin_url( 'admin.php?page=bricks-mcp' ) ),
 			esc_html__( 'Settings', 'bricks-mcp' )
 		);
 
