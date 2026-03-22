@@ -37,7 +37,7 @@ Bricks MCP is a WordPress plugin that implements an [MCP (Model Context Protocol
 ### Claude Code
 
 ```bash
-claude mcp add --transport http bricks-mcp https://yoursite.com/wp-json/bricks-mcp/v1/mcp
+claude mcp add bricks-mcp https://yoursite.com/wp-json/bricks-mcp/v1/mcp --transport http
 ```
 
 ### Claude Desktop / Other MCP Clients

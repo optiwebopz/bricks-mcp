@@ -502,7 +502,7 @@ final class Settings {
 					</div>
 					<p class="description" style="margin-top:10px;">
 						<?php esc_html_e( 'Add this to your .mcp.json file, or use:', 'bricks-mcp' ); ?>
-						<code>claude mcp add --transport http --header "Authorization: Basic ..." bricks-mcp <?php echo esc_html( $mcp_url ); ?></code>
+						<code>claude mcp add bricks-mcp <?php echo esc_html( $mcp_url ); ?> --transport http --header "Authorization: Basic ..."</code>
 					</p>
 					<p class="description">
 						<?php
@@ -726,9 +726,9 @@ final class Settings {
 
 		// Build the complete CLI command.
 		$claude_command = sprintf(
-			'claude mcp add --transport http --header "Authorization: Basic %s" bricks-mcp %s',
-			$auth_string,
-			$mcp_url
+			'claude mcp add bricks-mcp %s --transport http --header "Authorization: Basic %s"',
+			$mcp_url,
+			$auth_string
 		);
 
 		// Build Claude Code JSON config with real credentials.
