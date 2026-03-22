@@ -6,6 +6,7 @@
  * It removes all plugin data from the database.
  *
  * @package BricksMCP
+ * @license GPL-2.0-or-later
  */
 
 declare(strict_types=1);

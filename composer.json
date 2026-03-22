@@ -1,6 +1,7 @@
 {
     "name": "bricks-mcp/bricks-mcp",
     "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
     "require": {
         "opis/json-schema": "^2.4"
     },

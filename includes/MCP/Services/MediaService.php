@@ -3,6 +3,7 @@
  * Media service for Unsplash search, image sideloading, and media library operations.
  *
  * @package BricksMCP
+ * @license GPL-2.0-or-later
  */
 
 declare(strict_types=1);

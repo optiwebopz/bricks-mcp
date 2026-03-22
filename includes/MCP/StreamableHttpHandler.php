@@ -3,6 +3,7 @@
  * Streamable HTTP transport handler for MCP.
  *
  * @package BricksMCP
+ * @license GPL-2.0-or-later
  */
 
 declare(strict_types=1);

@@ -5,6 +5,7 @@
  * Data passed via bricksMcpUpdates global from wp_localize_script.
  *
  * @package BricksMCP
+ * @license GPL-2.0-or-later
  */
 
 (function() {

@@ -121,3 +121,9 @@ Two acceptable approaches:
 - [ ] All filenames are lowercase
 - [ ] No file exceeds its size limit
 - [ ] No PNG uses transparency (icons/banners) unless intentional for screenshots
+
+---
+
+## License
+
+Bricks MCP is licensed under the [GPL-2.0-or-later](https://www.gnu.org/licenses/gpl-2.0.html).

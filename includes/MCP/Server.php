@@ -3,6 +3,7 @@
  * MCP Server implementation.
  *
  * @package BricksMCP
+ * @license GPL-2.0-or-later
  */
 
 declare(strict_types=1);

@@ -3,6 +3,7 @@
  * PSR-4 compatible autoloader for the Bricks MCP plugin.
  *
  * @package BricksMCP
+ * @license GPL-2.0-or-later
  */
 
 declare(strict_types=1);
