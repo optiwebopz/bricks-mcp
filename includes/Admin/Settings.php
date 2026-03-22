@@ -53,6 +53,7 @@ final class Settings {
 		add_action( 'admin_init', [ $this, 'register_settings' ] );
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_admin_scripts' ] );
 		add_action( 'wp_ajax_bricks_mcp_test_connection', [ $this, 'ajax_test_connection' ] );
+		add_action( 'wp_ajax_bricks_mcp_generate_app_password', [ $this, 'ajax_generate_app_password' ] );
 	}
 
 	/**
@@ -432,6 +433,54 @@ final class Settings {
 			<h2><?php esc_html_e( 'MCP Configuration', 'bricks-mcp' ); ?></h2>
 			<p class="description"><?php esc_html_e( 'Add the following configuration to your AI tool to connect to this MCP server.', 'bricks-mcp' ); ?></p>
 
+			<!-- Generate Setup Command -->
+			<div style="margin:15px 0 20px;padding:15px;background:#f6f7f7;border:1px solid #ddd;border-radius:4px;">
+				<h3 style="margin-top:0;"><?php esc_html_e( 'Quick Setup', 'bricks-mcp' ); ?></h3>
+				<p class="description"><?php esc_html_e( 'Generate an Application Password and get a ready-to-paste setup command.', 'bricks-mcp' ); ?></p>
+				<p style="margin-top:10px;">
+					<button type="button" id="bricks-mcp-generate-btn" class="button button-primary">
+						<?php esc_html_e( 'Generate Setup Command', 'bricks-mcp' ); ?>
+					</button>
+					<span id="bricks-mcp-generate-spinner" class="spinner" style="float:none;"></span>
+				</p>
+				<div id="bricks-mcp-generate-error" style="display:none;margin-top:10px;"></div>
+
+				<div id="bricks-mcp-generated-result" style="display:none;margin-top:15px;">
+					<div style="padding:10px 12px;border-left:4px solid #dba617;background:#fcf0e8;margin-bottom:15px;">
+						<strong><?php esc_html_e( 'Important:', 'bricks-mcp' ); ?></strong>
+						<?php esc_html_e( 'This password is shown once. Copy your command now -- it cannot be retrieved later.', 'bricks-mcp' ); ?>
+					</div>
+
+					<h4 style="margin:0 0 8px;"><?php esc_html_e( 'Claude Code (one-liner):', 'bricks-mcp' ); ?></h4>
+					<div style="position:relative;">
+						<pre style="background:#1e1e1e;color:#d4d4d4;padding:15px;border-radius:4px;overflow:auto;margin:0;white-space:pre-wrap;word-break:break-all;"><code id="bricks-mcp-generated-command"></code></pre>
+						<button type="button" class="button bricks-mcp-copy-btn" data-target="bricks-mcp-generated-command" style="position:absolute;top:8px;right:8px;">
+							<?php esc_html_e( 'Copy to Clipboard', 'bricks-mcp' ); ?>
+						</button>
+					</div>
+
+					<hr style="margin:15px 0;">
+
+					<h4 style="margin:0 0 8px;"><?php esc_html_e( 'Claude Code (JSON config):', 'bricks-mcp' ); ?></h4>
+					<div style="position:relative;">
+						<pre style="background:#1e1e1e;color:#d4d4d4;padding:15px;border-radius:4px;overflow:auto;margin:0;"><code id="bricks-mcp-generated-claude-config"></code></pre>
+						<button type="button" class="button bricks-mcp-copy-btn" data-target="bricks-mcp-generated-claude-config" style="position:absolute;top:8px;right:8px;">
+							<?php esc_html_e( 'Copy to Clipboard', 'bricks-mcp' ); ?>
+						</button>
+					</div>
+
+					<h4 style="margin:15px 0 8px;"><?php esc_html_e( 'Gemini (JSON config):', 'bricks-mcp' ); ?></h4>
+					<div style="position:relative;">
+						<pre style="background:#1e1e1e;color:#d4d4d4;padding:15px;border-radius:4px;overflow:auto;margin:0;"><code id="bricks-mcp-generated-gemini-config"></code></pre>
+						<button type="button" class="button bricks-mcp-copy-btn" data-target="bricks-mcp-generated-gemini-config" style="position:absolute;top:8px;right:8px;">
+							<?php esc_html_e( 'Copy to Clipboard', 'bricks-mcp' ); ?>
+						</button>
+					</div>
+				</div>
+			</div>
+
+			<h3 style="margin-top:0;"><?php esc_html_e( 'Manual Setup', 'bricks-mcp' ); ?></h3>
+
 			<div class="bricks-mcp-tabs" style="margin-top:15px;">
 				<div style="border-bottom:2px solid #ddd;margin-bottom:15px;">
 					<button type="button" data-tab="claude" class="active" style="background:none;border:none;padding:8px 16px;cursor:pointer;font-size:14px;font-weight:600;border-bottom:2px solid #2271b1;margin-bottom:-2px;">
@@ -452,7 +501,7 @@ final class Settings {
 					</div>
 					<p class="description" style="margin-top:10px;">
 						<?php esc_html_e( 'Add this to your .mcp.json file, or use:', 'bricks-mcp' ); ?>
-						<code>claude mcp add --transport http bricks-mcp <?php echo esc_html( $mcp_url ); ?></code>
+						<code>claude mcp add --transport http --header "Authorization: Basic ..." bricks-mcp <?php echo esc_html( $mcp_url ); ?></code>
 					</p>
 					<p class="description">
 						<?php
@@ -623,6 +672,104 @@ final class Settings {
 					__( 'Connection successful! MCP server is reachable and authenticated (protocol %s).', 'bricks-mcp' ),
 					$protocol_version
 				),
+			]
+		);
+	}
+
+	/**
+	 * AJAX handler: Generate an Application Password and return setup commands.
+	 *
+	 * Creates a WordPress Application Password for the current user and returns
+	 * a complete claude mcp add command with auth headers, plus JSON configs
+	 * for Claude Code and Gemini with real credentials.
+	 *
+	 * @return void
+	 */
+	public function ajax_generate_app_password(): void {
+		check_ajax_referer( 'bricks_mcp_settings_nonce', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'bricks-mcp' ) ], 403 );
+		}
+
+		$current_user = wp_get_current_user();
+		$username     = $current_user->user_login;
+
+		// Create Application Password.
+		$result = \WP_Application_Passwords::create_new_application_password(
+			$current_user->ID,
+			[
+				'name'   => 'Bricks MCP - Claude Code',
+				'app_id' => wp_generate_uuid4(),
+			]
+		);
+
+		if ( is_wp_error( $result ) ) {
+			wp_send_json_error( [ 'message' => $result->get_error_message() ] );
+		}
+
+		// $result is [ $password, $item ] -- the raw password is only available at creation time.
+		$password = $result[0];
+
+		// Build MCP endpoint URL with optional custom base URL override.
+		$settings    = get_option( self::OPTION_NAME, $this->get_defaults() );
+		$custom_base = $settings['custom_base_url'] ?? '';
+		if ( ! empty( $custom_base ) ) {
+			$mcp_url = trailingslashit( $custom_base ) . 'wp-json/bricks-mcp/v1/mcp';
+		} else {
+			$mcp_url = rest_url( 'bricks-mcp/v1/mcp' );
+		}
+
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+		$auth_string = base64_encode( $username . ':' . $password );
+
+		// Build the complete CLI command.
+		$claude_command = sprintf(
+			'claude mcp add --transport http --header "Authorization: Basic %s" bricks-mcp %s',
+			$auth_string,
+			$mcp_url
+		);
+
+		// Build Claude Code JSON config with real credentials.
+		$claude_config = wp_json_encode(
+			[
+				'mcpServers' => [
+					'bricks-mcp' => [
+						'type'    => 'http',
+						'url'     => $mcp_url,
+						'headers' => [
+							'Authorization' => 'Basic ' . $auth_string,
+						],
+					],
+				],
+			],
+			JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
+		);
+
+		// Build Gemini JSON config with real credentials.
+		$gemini_config = wp_json_encode(
+			[
+				'mcpServers' => [
+					'bricks-mcp' => [
+						'httpUrl' => $mcp_url,
+						'headers' => [
+							'Authorization' => 'Basic ' . $auth_string,
+						],
+					],
+				],
+			],
+			JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
+		);
+
+		wp_send_json_success(
+			[
+				'password'       => $password,
+				'username'       => $username,
+				'auth_string'    => $auth_string,
+				'claude_command' => $claude_command,
+				'claude_config'  => $claude_config,
+				'gemini_config'  => $gemini_config,
+				'mcp_url'        => $mcp_url,
 			]
 		);
 	}
