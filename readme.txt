@@ -3,7 +3,7 @@ Contributors: cristianuibar
 Tags: ai, bricks builder, mcp, artificial intelligence, page builder
 Requires at least: 6.4
 Tested up to: 6.8
-Stable tag: 1.1.4
+Stable tag: 1.1.5
 Requires PHP: 8.2
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -107,6 +107,9 @@ Yes, when configured correctly. The plugin enforces WordPress Application Passwo
 
 == Changelog ==
 
+= 1.1.5 =
+* Fix: Plugins page now automatically detects new releases when local update cache expires, instead of requiring manual Check Now.
+
 = 1.1.4 =
 * Fix: Removed duplicate update notification on plugins page. WordPress core update notice now handles this alone.
 
@@ -134,6 +137,9 @@ Yes, when configured correctly. The plugin enforces WordPress Application Passwo
 * Unsplash API integration for image search.
 
 == Upgrade Notice ==
+
+= 1.1.5 =
+Plugins page now auto-detects new releases without manual Check Now.
 
 = 1.1.4 =
 Removes duplicate update notification on plugins page.

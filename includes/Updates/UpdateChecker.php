@@ -58,6 +58,28 @@ final class UpdateChecker {
 
 		// AJAX handler for "Check Now" button on settings page.
 		add_action( 'wp_ajax_bricks_mcp_check_update', [ $this, 'ajax_check_update' ] );
+
+		// Refresh update data on plugins page when our cache has expired.
+		add_action( 'load-plugins.php', [ $this, 'maybe_refresh_on_plugins_page' ] );
+	}
+
+	/**
+	 * Refresh update data when visiting the plugins page if our cache expired.
+	 *
+	 * WordPress only runs wp_update_plugins() on cron (every 12 hours).
+	 * This ensures the plugins page always reflects the latest release by
+	 * forcing a re-check when our local cache has expired.
+	 *
+	 * @return void
+	 */
+	public function maybe_refresh_on_plugins_page(): void {
+		if ( false !== get_transient( self::TRANSIENT_KEY ) ) {
+			return;
+		}
+
+		// Our cache expired — clear WordPress update cache and force re-check.
+		delete_site_transient( 'update_plugins' );
+		wp_update_plugins();
 	}
 
 	/**
