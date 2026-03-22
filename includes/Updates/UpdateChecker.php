@@ -58,9 +58,6 @@ final class UpdateChecker {
 
 		// AJAX handler for "Check Now" button on settings page.
 		add_action( 'wp_ajax_bricks_mcp_check_update', [ $this, 'ajax_check_update' ] );
-
-		// Plugin row notice when an update is available.
-		add_action( 'after_plugin_row_' . BRICKS_MCP_PLUGIN_BASENAME, [ $this, 'render_update_notice' ], 10, 2 );
 	}
 
 	/**
@@ -207,39 +204,4 @@ final class UpdateChecker {
 		wp_send_json_success( $data );
 	}
 
-	/**
-	 * Render notice below plugin row when an update is available.
-	 *
-	 * @param string               $plugin_file Plugin basename.
-	 * @param array<string,string> $plugin_data Plugin header data.
-	 * @return void
-	 */
-	public function render_update_notice( string $plugin_file, array $plugin_data ): void {
-		$update_data = $this->get_cached_update_data();
-
-		if ( empty( $update_data['version'] ) ) {
-			return;
-		}
-		if ( version_compare( $plugin_data['Version'] ?? '0', $update_data['version'], '>=' ) ) {
-			return;
-		}
-
-		// Standard WordPress plugin row notice structure.
-		$wp_list_table = _get_list_table( 'WP_Plugins_List_Table' );
-		$colspan       = $wp_list_table->get_column_count();
-
-		echo '<tr class="plugin-update-tr' . ( is_plugin_active( $plugin_file ) ? ' active' : '' ) . '">'
-			. '<td colspan="' . esc_attr( (string) $colspan ) . '" class="plugin-update colspanchange">'
-			. '<div class="update-message notice inline notice-warning notice-alt"><p>';
-
-		printf(
-			/* translators: 1: version number, 2: opening link tag, 3: closing link tag */
-			esc_html__( 'Version %1$s is available. %2$sGo to Updates%3$s to install.', 'bricks-mcp' ),
-			esc_html( $update_data['version'] ),
-			'<a href="' . esc_url( admin_url( 'update-core.php' ) ) . '">',
-			'</a>'
-		);
-
-		echo '</p></div></td></tr>';
-	}
 }

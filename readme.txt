@@ -3,7 +3,7 @@ Contributors: cristianuibar
 Tags: ai, bricks builder, mcp, artificial intelligence, page builder
 Requires at least: 6.4
 Tested up to: 6.8
-Stable tag: 1.1.3
+Stable tag: 1.1.4
 Requires PHP: 8.2
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -107,6 +107,9 @@ Yes, when configured correctly. The plugin enforces WordPress Application Passwo
 
 == Changelog ==
 
+= 1.1.4 =
+* Fix: Removed duplicate update notification on plugins page. WordPress core update notice now handles this alone.
+
 = 1.1.3 =
 * Fix: Manual setup configs showed base64-encoded placeholder that looked like real credentials. Now shows readable YOUR_BASE64_AUTH_STRING placeholder.
 * Improved: Help text now explains Base64 encoding and points to Generate Setup Command button.
@@ -131,6 +134,9 @@ Yes, when configured correctly. The plugin enforces WordPress Application Passwo
 * Unsplash API integration for image search.
 
 == Upgrade Notice ==
+
+= 1.1.4 =
+Removes duplicate update notification on plugins page.
 
 = 1.1.3 =
 Manual setup configs now show readable placeholders instead of confusing base64-encoded strings.
