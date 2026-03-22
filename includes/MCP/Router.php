@@ -371,6 +371,10 @@ final class Router {
 		$query_args['posts_per_page'] = min( (int) $query_args['posts_per_page'], 100 );
 
 		$posts  = get_posts( $query_args );
+
+		// Prime thumbnail cache to avoid N+1 queries for get_the_post_thumbnail_url().
+		update_post_thumbnail_cache( $posts );
+
 		$result = array();
 
 		foreach ( $posts as $post ) {
@@ -3117,8 +3121,12 @@ final class Router {
 			);
 		}
 
-		$query  = new \WP_Query( $query_args );
-		$result = array();
+		$query      = new \WP_Query( $query_args );
+		$result     = array();
+
+		// Prime user cache to avoid N+1 queries for get_the_author_meta().
+		$author_ids = array_unique( array_map( fn( $p ) => (int) $p->post_author, $query->posts ) );
+		cache_users( $author_ids );
 
 		foreach ( $query->posts as $post ) {
 			if ( $post instanceof \WP_Post ) {
@@ -3162,8 +3170,12 @@ final class Router {
 			),
 		);
 
-		$query  = new \WP_Query( $query_args );
-		$result = array();
+		$query      = new \WP_Query( $query_args );
+		$result     = array();
+
+		// Prime user cache to avoid N+1 queries for get_the_author_meta().
+		$author_ids = array_unique( array_map( fn( $p ) => (int) $p->post_author, $query->posts ) );
+		cache_users( $author_ids );
 
 		foreach ( $query->posts as $post ) {
 			if ( $post instanceof \WP_Post ) {
