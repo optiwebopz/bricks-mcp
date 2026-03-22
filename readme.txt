@@ -3,7 +3,7 @@ Contributors: cristianuibar
 Tags: ai, bricks builder, mcp, artificial intelligence, page builder
 Requires at least: 6.4
 Tested up to: 6.8
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 Requires PHP: 8.2
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -107,6 +107,11 @@ Yes, when configured correctly. The plugin enforces WordPress Application Passwo
 
 == Changelog ==
 
+= 1.1.0 =
+* Move MCP settings page from WP Settings into Bricks admin menu as MCP submenu.
+* Add quick setup UI with one-click app password generation and auto-fill.
+* Add generate setup command JS handler for streamlined onboarding.
+
 = 1.0.0 =
 * Initial release.
 * MCP server with REST API transport.
@@ -116,6 +121,9 @@ Yes, when configured correctly. The plugin enforces WordPress Application Passwo
 * Unsplash API integration for image search.
 
 == Upgrade Notice ==
+
+= 1.1.0 =
+Settings page moved to Bricks admin menu. New quick setup UI for easier onboarding.
 
 = 1.0.0 =
 Initial release.
