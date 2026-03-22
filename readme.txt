@@ -3,7 +3,7 @@ Contributors: cristianuibar
 Tags: ai, bricks builder, mcp, artificial intelligence, page builder
 Requires at least: 6.4
 Tested up to: 6.8
-Stable tag: 1.1.5
+Stable tag: 1.2.0
 Requires PHP: 8.2
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -107,6 +107,21 @@ Yes, when configured correctly. The plugin enforces WordPress Application Passwo
 
 == Changelog ==
 
+= 1.2.0 =
+* Security: Remove CORS wildcard headers and enforce per-user rate limiting.
+* Security: Add `current_user_can()` authorization checks to tool execution and WordPress tool.
+* Security: Validate tool arguments against inputSchema before handler dispatch.
+* Security: Strip JS page settings keys on template import when dangerous actions disabled.
+* New: RateLimiter class with atomic `wp_cache_incr` pattern replaces duplicated transient logic.
+* New: ValidationService `validate_arguments()` for tool input schema validation.
+* New: Rate limit RPM settings field on admin page.
+* New: SECURITY.md documentation.
+* Performance: Fix N+1 queries in post listing tools via cache priming.
+* Accessibility: Add ARIA roles, id attributes, and aria-selected/tabindex to settings page.
+* Accessibility: Add arrow-key tab navigation to admin updates UI.
+* UI: Add settings save feedback via `settings_errors()`.
+* UI: Extract inline styles from Settings.php into admin-settings.css.
+
 = 1.1.5 =
 * Fix: Plugins page now automatically detects new releases when local update cache expires, instead of requiring manual Check Now.
 
@@ -137,6 +152,9 @@ Yes, when configured correctly. The plugin enforces WordPress Application Passwo
 * Unsplash API integration for image search.
 
 == Upgrade Notice ==
+
+= 1.2.0 =
+Security hardening, input validation, authorization checks, rate limiting overhaul, N+1 query fix, and accessibility improvements.
 
 = 1.1.5 =
 Plugins page now auto-detects new releases without manual Check Now.
