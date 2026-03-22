@@ -1,0 +1,56 @@
+name: Build Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+
+      - name: Install Composer dependencies (production)
+        if: hashFiles('composer.json') != ''
+        run: composer install --no-dev --optimize-autoloader --no-interaction
+
+      - name: Build plugin ZIP
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          mkdir -p build/bricks-mcp
+          rsync -a \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='tests' \
+            --exclude='.planning' \
+            --exclude='.wp-env.json' \
+            --exclude='package.json' \
+            --exclude='package-lock.json' \
+            --exclude='composer.json' \
+            --exclude='composer.lock' \
+            --exclude='phpunit.xml' \
+            --exclude='phpcs.xml' \
+            --exclude='.editorconfig' \
+            --exclude='.gitignore' \
+            --exclude='build' \
+            --exclude='.github' \
+            --exclude='update-server' \
+            --exclude='.claude' \
+            --exclude='*.md' \
+            ./ build/bricks-mcp/
+          cd build && zip -r "bricks-mcp.zip" bricks-mcp/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/bricks-mcp.zip
+          generate_release_notes: true

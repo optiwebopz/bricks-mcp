@@ -1,0 +1,18 @@
+{
+    "name": "bricks-mcp/bricks-mcp",
+    "type": "wordpress-plugin",
+    "require": {
+        "opis/json-schema": "^2.4"
+    },
+    "require-dev": {
+        "squizlabs/php_codesniffer": "^3.13",
+        "wp-coding-standards/wpcs": "^3.3",
+        "dealerdirect/phpcodesniffer-composer-installer": "^1.2",
+        "php-stubs/wordpress-stubs": "^6.9"
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        }
+    }
+}

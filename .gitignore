@@ -1,0 +1,63 @@
+# Dependencies
+node_modules/
+vendor/
+
+# WordPress environment
+.wp-env/
+
+# Logs
+logs/
+*.log
+
+# PHPUnit
+.phpunit.cache/
+.phpunit.result.cache
+coverage/
+
+# IDE
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+
+
+# npm
+package-lock.json
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Cache
+*.cache
+.cache/
+
+# Claude Code
+.claude/
+
+# Local MCP config (contains credentials)
+.mcp.json
+
+# GSD planning directory (internal project management)
+.planning/
+
+# Internal project docs (kept locally, not published)
+CLAUDE.md
+docs/COURSE_CURRICULUM.md
+docs/MARKETING_PLAN.md
+docs/legal/
+
+# Dev artifacts
+test-all-tools.sh
+phase6-plugin-row-notice.png
+tests/auto_uat_phase8.py
+*:Zone.Identifier
