@@ -192,6 +192,7 @@ final class Settings {
 		?>
 		<div class="wrap">
 			<h1><?php echo esc_html( get_admin_page_title() ); ?></h1>
+			<?php settings_errors(); ?>
 
 			<div class="bricks-mcp-info" style="background: #fff; padding: 15px; margin: 20px 0; border-left: 4px solid #2271b1;">
 				<h3 style="margin-top: 0;"><?php esc_html_e( 'MCP Server Endpoints', 'bricks-mcp' ); ?></h3>
