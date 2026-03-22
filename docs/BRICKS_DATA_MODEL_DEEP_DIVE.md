@@ -449,9 +449,26 @@ $this->controls['controlKey'] = [
 | `link` | URL/link settings | Button link |
 | `filters` | CSS filters | Blur, brightness |
 | `transform` | 2D/3D transforms | Rotate, scale |
+| `perspective` | 3D perspective distance | Perspective depth (@since 2.3) |
 | `box-shadow` | Shadow settings | Drop shadows |
 | `code` | Code editor | Custom CSS |
 | `repeater` | Repeatable items | Gallery items |
+
+### Bricks 2.3 Style Properties
+
+The following style controls were added in Bricks 2.3 and generate CSS directly:
+
+| Control Key | CSS Property | Group | Type | Notes |
+|-------------|-------------|-------|------|-------|
+| `_perspective` | `perspective` | `_layout` | `number` | 3D perspective distance |
+| `_perspectiveOrigin` | `perspective-origin` | `_layout` | `text` | Origin point for perspective |
+| `_motionElementParallax` | — | `_transform` | `checkbox` | Enables element parallax (no CSS, sets `data-brx-motion-parallax` attribute) |
+| `_motionElementParallaxSpeedX` | `--brx-motion-parallax-speed-x` | `_transform` | `number` | Horizontal parallax speed (%). Requires `_motionElementParallax` |
+| `_motionElementParallaxSpeedY` | `--brx-motion-parallax-speed-y` | `_transform` | `number` | Vertical parallax speed (%). Requires `_motionElementParallax` |
+| `_motionBackgroundParallax` | — | `_transform` | `checkbox` | Enables background parallax (no CSS, sets `data-brx-motion-parallax` attribute) |
+| `_motionBackgroundParallaxSpeed` | `--brx-motion-background-speed` | `_transform` | `number` | Background parallax speed (%). Requires `_motionBackgroundParallax` |
+
+**Source:** `includes/elements/base.php` — parallax controls emit CSS custom properties and a `data-brx-motion-parallax` JSON attribute on the element for the frontend JS to consume.
 
 ### CSS Rules Definition
 
