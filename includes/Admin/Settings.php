@@ -123,6 +123,15 @@ final class Settings {
 			'bricks_mcp_general'
 		);
 
+		// Rate limit field.
+		add_settings_field(
+			'rate_limit_rpm',
+			__( 'Rate Limit (requests/minute)', 'bricks-mcp' ),
+			[ $this, 'render_rate_limit_rpm_field' ],
+			self::PAGE_SLUG,
+			'bricks_mcp_general'
+		);
+
 		// Dangerous actions field.
 		add_settings_field(
 			'dangerous_actions',
@@ -144,6 +153,7 @@ final class Settings {
 			'require_auth'      => true,
 			'custom_base_url'   => '',
 			'dangerous_actions' => false,
+			'rate_limit_rpm'    => 120,
 		];
 	}
 
@@ -163,6 +173,7 @@ final class Settings {
 			: '';
 
 		$sanitized['dangerous_actions'] = ! empty( $input['dangerous_actions'] );
+		$sanitized['rate_limit_rpm']    = max( 10, min( 1000, (int) ( $input['rate_limit_rpm'] ?? 120 ) ) );
 
 		return $sanitized;
 	}
@@ -293,6 +304,24 @@ final class Settings {
 				<?php esc_html_e( 'When enabled, AI tools can: write to global Bricks settings, execute custom JavaScript on pages, and modify code execution settings. Only enable this on development sites or when running trusted AI agent teams. API keys and secrets remain masked regardless of this setting.', 'bricks-mcp' ); ?>
 			</p>
 		</div>
+		<?php
+	}
+
+	/**
+	 * Render rate limit RPM field.
+	 *
+	 * @return void
+	 */
+	public function render_rate_limit_rpm_field(): void {
+		$settings = get_option( self::OPTION_NAME, $this->get_defaults() );
+		$value    = (int) ( $settings['rate_limit_rpm'] ?? 120 );
+		?>
+		<input type="number" name="<?php echo esc_attr( self::OPTION_NAME ); ?>[rate_limit_rpm]"
+			value="<?php echo esc_attr( (string) $value ); ?>" min="10" max="1000" step="10" class="small-text">
+		<span><?php esc_html_e( 'requests per minute per user', 'bricks-mcp' ); ?></span>
+		<p class="description">
+			<?php esc_html_e( 'Maximum number of MCP requests allowed per authenticated user per minute. Default: 120. Increase to 300 for intensive AI building sessions. Applies only when authentication is required.', 'bricks-mcp' ); ?>
+		</p>
 		<?php
 	}
 
@@ -507,7 +536,10 @@ final class Settings {
 						<?php
 						echo wp_kses(
 							__( 'Replace <code>YOUR_BASE64_AUTH_STRING</code> with the Base64-encoded value of <code>username:app_password</code>. Or use the <strong>Generate Setup Command</strong> button above for a ready-to-paste config.', 'bricks-mcp' ),
-							[ 'code' => [], 'strong' => [] ]
+							[
+								'code'   => [],
+								'strong' => [],
+							]
 						);
 						?>
 					</p>
@@ -528,7 +560,10 @@ final class Settings {
 						<?php
 						echo wp_kses(
 							__( 'Replace <code>YOUR_BASE64_AUTH_STRING</code> with the Base64-encoded value of <code>username:app_password</code>. Or use the <strong>Generate Setup Command</strong> button above for a ready-to-paste config.', 'bricks-mcp' ),
-							[ 'code' => [], 'strong' => [] ]
+							[
+								'code'   => [],
+								'strong' => [],
+							]
 						);
 						?>
 					</p>
@@ -765,5 +800,4 @@ final class Settings {
 			]
 		);
 	}
-
 }
