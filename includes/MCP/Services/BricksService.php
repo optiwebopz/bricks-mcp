@@ -6547,10 +6547,17 @@ class BricksService {
 		$template_type = sanitize_text_field( $data['templateType'] ?? 'section' );
 		update_post_meta( $template_id, '_bricks_template_type', $template_type );
 
-		// Save page settings if provided.
+		// Save page settings if provided, stripping JS-capable keys when dangerous_actions is disabled.
 		$page_settings_key = defined( 'BRICKS_DB_PAGE_SETTINGS' ) ? BRICKS_DB_PAGE_SETTINGS : '_bricks_page_settings';
+		$stripped_js_keys  = array();
 		if ( ! empty( $data['pageSettings'] ) && is_array( $data['pageSettings'] ) ) {
-			update_post_meta( $template_id, $page_settings_key, $data['pageSettings'] );
+			$js_gated_keys = array( 'customScriptsHeader', 'customScriptsBodyHeader', 'customScriptsBodyFooter' );
+			$page_settings = $data['pageSettings'];
+			if ( ! $this->is_dangerous_actions_enabled() ) {
+				$stripped_js_keys = array_values( array_intersect( array_keys( $page_settings ), $js_gated_keys ) );
+				$page_settings    = array_diff_key( $page_settings, array_flip( $js_gated_keys ) );
+			}
+			update_post_meta( $template_id, $page_settings_key, $page_settings );
 		}
 
 		// Save template settings if provided.
@@ -6564,13 +6571,24 @@ class BricksService {
 			$class_summary = $this->merge_imported_global_classes( $data['globalClasses'] );
 		}
 
-		return array(
+		$result = array(
 			'template_id'    => $template_id,
 			'title'          => get_the_title( $template_id ),
 			'template_type'  => $template_type,
 			'elements_count' => count( $content ),
-			'global_classes'  => $class_summary,
+			'global_classes' => $class_summary,
 		);
+
+		if ( ! empty( $stripped_js_keys ) ) {
+			$result['warnings'] = array(
+				sprintf(
+					'Stripped JS-capable page settings keys (%s) because dangerous actions mode is disabled. Enable in Settings > Bricks MCP to allow.',
+					implode( ', ', $stripped_js_keys )
+				),
+			);
+		}
+
+		return $result;
 	}
 
 	/**
