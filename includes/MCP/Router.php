@@ -265,6 +265,16 @@ final class Router {
 			);
 		}
 
+		// Validate tool arguments against inputSchema.
+		$validation = $this->validation_service->validate_arguments( $arguments, $tool['inputSchema'], $name );
+		if ( is_wp_error( $validation ) ) {
+			return Response::error(
+				'invalid_arguments',
+				$validation->get_error_message(),
+				422
+			);
+		}
+
 		try {
 			$result = call_user_func( $tool['handler'], $arguments );
 
