@@ -1957,7 +1957,34 @@ Two modes controlled by `cssLoading` setting:
 
 ---
 
+## Bricks 2.3 New Elements
+
+### Toggle Mode Element (Bricks 2.3+)
+
+Element name: `toggle-mode`
+Category: `general`
+Label: "Toggle - Mode"
+Keywords: light, dark, theme, mode, toggle
+Scripts: `bricksToggleMode`
+
+**Controls:**
+
+| Key | Type | CSS Property | CSS Selector | Description |
+|-----|------|-------------|--------------|-------------|
+| `icon` | icon | — | — | Light mode icon (default: built-in sun SVG) |
+| `iconColor` | color | `color`, `fill` | `.toggle.light > *` | Light mode icon color |
+| `iconSize` | number (units) | `font-size` | `.toggle.light > *` | Light mode icon size |
+| `iconDark` | icon | — | — | Dark mode icon (default: built-in moon SVG) |
+| `iconDarkColor` | color | `color`, `fill` | `.toggle.dark > *` | Dark mode icon color |
+| `iconDarkSize` | number (units) | `font-size` | `.toggle.dark > *` | Dark mode icon size |
+| `ariaLabel` | text | — | — | `aria-label` attribute (default: `"Toggle mode"`) |
+
+**Render output:** `<button>` with two `<span>` children (`.toggle.light` and `.toggle.dark`), CSS controls visibility based on current mode. Default icons are inline SVGs from `BRICKS_PATH_ASSETS/svg/frontend/mode-light.svg` and `mode-dark.svg`.
+
+---
+
 ## Changelog
 
 - **2026-01-13**: Initial documentation created
-- **Source Version**: Bricks Builder v2.2-beta
+- **2026-03-23**: Added Bricks 2.3 toggle-mode element documentation
+- **Source Version**: Bricks Builder v2.2-beta (updated for 2.3 features)
