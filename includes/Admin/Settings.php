@@ -49,7 +49,7 @@ final class Settings {
 	 * @return void
 	 */
 	public function init(): void {
-		add_action( 'admin_menu', [ $this, 'add_settings_page' ] );
+		add_action( 'admin_menu', [ $this, 'add_settings_page' ], 99 );
 		add_action( 'admin_init', [ $this, 'register_settings' ] );
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_admin_scripts' ] );
 		add_action( 'wp_ajax_bricks_mcp_test_connection', [ $this, 'ajax_test_connection' ] );
@@ -62,9 +62,10 @@ final class Settings {
 	 * @return void
 	 */
 	public function add_settings_page(): void {
-		add_options_page(
-			__( 'Bricks MCP Settings', 'bricks-mcp' ),
-			__( 'Bricks MCP', 'bricks-mcp' ),
+		add_submenu_page(
+			'bricks',
+			__( 'MCP Settings', 'bricks-mcp' ),
+			__( 'MCP', 'bricks-mcp' ),
 			'manage_options',
 			self::PAGE_SLUG,
 			[ $this, 'render_settings_page' ]
@@ -302,7 +303,7 @@ final class Settings {
 	 * @return void
 	 */
 	public function enqueue_admin_scripts( string $hook ): void {
-		if ( 'settings_page_bricks-mcp' !== $hook ) {
+		if ( 'bricks_page_bricks-mcp' !== $hook ) {
 			return;
 		}
 
