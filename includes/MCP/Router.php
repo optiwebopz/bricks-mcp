@@ -255,6 +255,15 @@ final class Router {
 
 		$tool = $this->tools[ $name ];
 
+		$capability = $this->get_tool_capability( $name );
+		if ( null !== $capability && ! current_user_can( $capability ) ) {
+			return Response::error(
+				'bricks_mcp_forbidden',
+				/* translators: %s: Required capability */
+				sprintf( __( 'You do not have the required capability (%s) to use this tool.', 'bricks-mcp' ), $capability ),
+				403
+			);
+		}
 
 		try {
 			$result = call_user_func( $tool['handler'], $arguments );
@@ -280,6 +289,36 @@ final class Router {
 				500
 			);
 		}
+	}
+
+	/**
+	 * Get the required WordPress capability for a tool.
+	 *
+	 * Returns null for public tools (no capability required).
+	 *
+	 * @param string $tool_name The tool name.
+	 * @return string|null The required capability, or null if no capability is required.
+	 */
+	private function get_tool_capability( string $tool_name ): ?string {
+		$public_tools = array(
+			'get_builder_guide',
+			'wordpress', // Per-action checks handled inside tool_wordpress().
+		);
+
+		if ( in_array( $tool_name, $public_tools, true ) ) {
+			return null;
+		}
+
+		$read_tools = array(
+			'get_site_info',
+		);
+
+		if ( in_array( $tool_name, $read_tools, true ) ) {
+			return 'read';
+		}
+
+		// All other tools (bricks, page, element, template, etc.) require manage_options.
+		return 'manage_options';
 	}
 
 	/**
@@ -1400,6 +1439,25 @@ final class Router {
 	 */
 	public function tool_wordpress( array $args ): array|\WP_Error {
 		$action = $args['action'] ?? '';
+
+		$action_caps = array(
+			'get_posts'   => 'read',
+			'get_post'    => 'read',
+			'get_users'   => 'list_users',
+			'get_plugins' => 'activate_plugins',
+		);
+
+		$required_cap = $action_caps[ $action ] ?? null;
+		if ( null !== $required_cap && ! current_user_can( $required_cap ) ) {
+			return new \WP_Error(
+				'bricks_mcp_forbidden',
+				sprintf(
+					/* translators: %s: Required capability */
+					__( 'You do not have the required capability (%s) to perform this action.', 'bricks-mcp' ),
+					$required_cap
+				)
+			);
+		}
 
 		return match ( $action ) {
 			'get_posts'   => $this->tool_get_posts( $args ),
