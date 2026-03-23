@@ -283,12 +283,18 @@ final class StreamableHttpHandler {
 			'version' => BRICKS_MCP_VERSION,
 		];
 
+		$instructions = 'Bricks MCP connects AI assistants to a WordPress site running Bricks Builder. '
+			. 'IMPORTANT: Before creating or modifying any Bricks page, call the get_builder_guide tool to learn element settings, CSS gotchas, animation formats, and workflow patterns. '
+			. 'This avoids common mistakes like using wrong style property names or deprecated settings. '
+			. 'Use get_site_info to understand the site context (theme, plugins, Bricks version) before making changes.';
+
 		return $this->jsonrpc_success(
 			$id,
 			[
 				'protocolVersion' => self::PROTOCOL_VERSION,
 				'capabilities'    => $capabilities,
 				'serverInfo'      => $server_info,
+				'instructions'    => $instructions,
 			]
 		);
 	}
