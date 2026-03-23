@@ -88,6 +88,9 @@ section
 | `_border` | object | `{"radius": {"top": "12px", "right": "12px", "bottom": "12px", "left": "12px"}, "style": "solid", "color": {"hex": "#E2E8F0"}, "width": 1}` |
 | `_flexGrow` | int | `1` |
 | `_width` | string | `"100%"`, `"33.33%"` |
+| `_widthMax` | string | `"600px"`, `"80%"` — CSS `max-width`. Note: `_maxWidth` does NOT exist — use `_widthMax` |
+| `_display` | string | `"flex"`, `"inline-flex"`, `"block"`, `"inline-block"`, `"inline"`, `"none"` — CSS `display`. Only for non-layout elements (heading, text-basic, button, icon, image, etc.). Layout elements (section, container, block, div) are always flex. |
+| `_gap` | string | `"20px"`, `"1rem"` — CSS `gap`. Requires `_display` set to `flex`/`inline-flex`. Only for non-layout elements. For layout elements (section, container), use `_cssCustom`. |
 | `_perspective` | string | `"800px"` — CSS `perspective` property. Number with unit (Bricks 2.3+, Layout group) |
 | `_perspectiveOrigin` | string | `"center"`, `"50% 50%"`, `"left top"` — CSS `perspective-origin` (Bricks 2.3+, Layout group) |
 | `_motionElementParallax` | boolean | `true` — Enable element parallax (Bricks 2.3+, Transform group) |
@@ -101,18 +104,18 @@ section
 
 These are silently ignored when set via API:
 
-- `_textAlign` — Use `_typography["text-align"]` instead
-- `_maxWidth` — Use `_cssCustom` instead
-- `_gap` — Use `_cssCustom` instead
-- `_display` — Use `_cssCustom` instead
+- `_textAlign` — Use `_typography["text-align"]` instead (no control exists for this key)
+- `_maxWidth` — This key does not exist. Use `_widthMax` instead (generates `max-width` CSS)
+
+**Layout element caveat:** `_gap` and `_display` only work on non-layout elements (heading, text-basic, button, icon, image, etc.). Layout elements (section, container, block, div) are always `display: flex` and do not expose these controls. Use `_cssCustom` for gap on layout elements.
 
 ### Custom CSS (`_cssCustom`)
 
-For anything not covered by built-in settings:
+For properties not covered by built-in settings, or for layout elements needing gap:
 
 ```json
 {
-  "_cssCustom": "#brxe-ELEMENT_ID { text-align: center; max-width: 600px; margin: 0 auto; gap: 36px; }"
+  "_cssCustom": "#brxe-ELEMENT_ID { gap: 36px; grid-template-columns: repeat(3, 1fr); }"
 }
 ```
 
@@ -1581,7 +1584,7 @@ Export is read-only (no license). Import requires a license (write operation).
 
 1. **`_textAlign` does nothing** — put `text-align` inside `_typography` instead
 2. **`%root%` does nothing via API** — use `#brxe-{elementId}` in `_cssCustom`
-3. **`_gap`, `_maxWidth`, `_display` are ignored** — use `_cssCustom` for these
+3. **`_maxWidth` does not exist** — use `_widthMax` for `max-width`. **`_gap` and `_display` work in Bricks 2.3+ but only on non-layout elements** (not section/container/block/div — those are always flex). For gap on layout elements, use `_cssCustom`.
 4. **Templates must be `publish` status** to be active in Bricks
 5. **Icon libraries:** `Ionicons`, `FontAwesome`, `Themify` — check `get_element_schemas` if unsure
 6. **Text supports HTML:** `"text": "<strong>Bold</strong> and normal"`
