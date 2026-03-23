@@ -66,6 +66,8 @@ section
 | `iconDarkColor` | toggle-mode | `{"hex": "#818CF8"}` — Dark mode icon color |
 | `iconDarkSize` | toggle-mode | `"24px"` — Dark mode icon size |
 | `ariaLabel` | toggle-mode | `"Toggle mode"` — Accessibility label (default: `"Toggle mode"`) |
+| `videoType` | video | `"youtube"`, `"vimeo"`, `"media"`, `"file"`, `"meta"` — Video source type |
+| `objectFit` | video | `"fill"`, `"contain"`, `"cover"`, `"none"`, `"scale-down"` — CSS object-fit on inner video element. Only for `media`/`file`/`meta` types, NOT youtube/vimeo (those use iframes). (Bricks 2.3+) |
 | `loadMoreInitial` | image-gallery | Number of images shown initially (enables load more) |
 | `loadMoreStep` | image-gallery | Images per load (`0` = all remaining) |
 | `loadMoreInfiniteScroll` | image-gallery | `true` to auto-load on scroll |
@@ -409,6 +411,40 @@ The `%brx%` placeholder is replaced by Bricks with an object: `{source: sourceEl
 - Use `"In"` types for entrance animations, `"Out"` types for exit or click-triggered hiding
 - For GSAP: always wrap init code in `DOMContentLoaded`, check `typeof gsap !== "undefined"` before use
 - Each interaction `id` must be unique across the page -- 6-char lowercase alphanumeric
+
+### Video Element
+
+The `video` element supports YouTube, Vimeo, and self-hosted (media/file/meta) sources. Self-hosted videos support the `objectFit` control (Bricks 2.3+) for CSS object-fit on the inner `<video>` tag.
+
+Self-hosted video with objectFit:
+
+```json
+{
+  "name": "video",
+  "settings": {
+    "videoType": "media",
+    "video": {
+      "id": 123,
+      "url": "https://example.com/wp-content/uploads/video.mp4"
+    },
+    "objectFit": "cover"
+  }
+}
+```
+
+> **Note:** `objectFit` only works when `videoType` is `"media"`, `"file"`, or `"meta"`. YouTube and Vimeo use iframes where object-fit does not apply.
+
+YouTube example:
+
+```json
+{
+  "name": "video",
+  "settings": {
+    "videoType": "youtube",
+    "videoUrl": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+  }
+}
+```
 
 ### Toggle - Mode (Light/Dark) (Bricks 2.3+)
 
