@@ -8884,13 +8884,76 @@ final class Router {
 						'children' => array(
 							array(
 								'name'     => 'heading',
-								'settings' => array( 'tag' => 'h1', 'text' => 'Thank You!' ),
+								'settings' => array(
+									'tag'          => 'h1',
+									'text'         => 'Thank You!',
+									'_typography'  => array( 'font-size' => '32px', 'font-weight' => '700' ),
+								),
 							),
 							array(
 								'name'     => 'text-basic',
-								'settings' => array( 'text' => 'Your order has been placed successfully.' ),
+								'settings' => array(
+									'text'        => 'Your order has been placed successfully.',
+									'_typography' => array( 'color' => array( 'hex' => '#666666' ) ),
+								),
 							),
-							array( 'name' => 'checkout-thankyou', 'settings' => array() ),
+							array(
+								'name'     => 'container',
+								'settings' => array(
+									'_width'     => '100%',
+									'_direction' => 'column',
+								),
+								'children' => array(
+									array(
+										'name'     => 'checkout-thankyou',
+										'settings' => array(
+											// Message section — success notice styling.
+											'messageMargin'     => array( 'top' => '30px', 'right' => '0', 'bottom' => '30px', 'left' => '0' ),
+											'messagePadding'    => array( 'top' => '20px', 'right' => '24px', 'bottom' => '20px', 'left' => '24px' ),
+											'messageBackground' => array( 'hex' => '#DFF0D8' ),
+											'messageBorder'     => array(
+												'radius' => array( 'top' => '8px', 'right' => '8px', 'bottom' => '8px', 'left' => '8px' ),
+											),
+											'messageTypography' => array( 'font-size' => '16px', 'font-weight' => '500', 'color' => array( 'hex' => '#3C763D' ) ),
+
+											// Order details section.
+											'detailsMargin'  => array( 'top' => '30px', 'right' => '0', 'bottom' => '30px', 'left' => '0' ),
+											'detailsPadding' => array( 'top' => '16px', 'right' => '20px', 'bottom' => '16px', 'left' => '20px' ),
+											'detailsBorder'  => array(
+												'radius' => array( 'top' => '8px', 'right' => '8px', 'bottom' => '8px', 'left' => '8px' ),
+											),
+
+											// Action buttons in order details table (Bricks 2.3).
+											'detailsActionButtonGap'        => '8px',
+											'detailsActionButtonPadding'    => array( 'top' => '8px', 'right' => '16px', 'bottom' => '8px', 'left' => '16px' ),
+											'detailsActionButtonBackground' => array( 'hex' => '#333333' ),
+											'detailsActionButtonBorder'     => array(
+												'radius' => array( 'top' => '4px', 'right' => '4px', 'bottom' => '4px', 'left' => '4px' ),
+											),
+											'detailsActionButtonTypography' => array( 'font-size' => '13px', 'font-weight' => '500', 'color' => array( 'hex' => '#FFFFFF' ) ),
+
+											// Order again button (Bricks 2.3).
+											'orderAgainButtonPadding'    => array( 'top' => '12px', 'right' => '24px', 'bottom' => '12px', 'left' => '24px' ),
+											'orderAgainButtonBackground' => array( 'hex' => '#333333' ),
+											'orderAgainButtonBorder'     => array(
+												'radius' => array( 'top' => '6px', 'right' => '6px', 'bottom' => '6px', 'left' => '6px' ),
+											),
+											'orderAgainButtonTypography' => array( 'font-size' => '14px', 'font-weight' => '600', 'color' => array( 'hex' => '#FFFFFF' ) ),
+
+											// Failed order buttons (Bricks 2.3).
+											'failedOrderButtonPadding'    => array( 'top' => '10px', 'right' => '20px', 'bottom' => '10px', 'left' => '20px' ),
+											'failedOrderButtonBackground' => array( 'hex' => '#D9534F' ),
+											'failedOrderButtonBorder'     => array(
+												'radius' => array( 'top' => '4px', 'right' => '4px', 'bottom' => '4px', 'left' => '4px' ),
+											),
+											'failedOrderButtonTypography' => array( 'font-size' => '14px', 'font-weight' => '500', 'color' => array( 'hex' => '#FFFFFF' ) ),
+
+											// Billing address section.
+											'addressMargin' => array( 'top' => '30px', 'right' => '0', 'bottom' => '30px', 'left' => '0' ),
+										),
+									),
+								),
+							),
 						),
 					),
 				),
