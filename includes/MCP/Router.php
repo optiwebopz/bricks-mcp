@@ -1066,7 +1066,7 @@ final class Router {
 		// Color palette consolidated tool (replaces list_color_palettes, create_color_palette, update_color_palette, delete_color_palette, add_color_to_palette, update_color_in_palette, delete_color_from_palette).
 		$this->register_tool(
 			'color_palette',
-			__( "Manage Bricks color palettes and colors.\n\nActions:\n- list: List all color palettes (no required params)\n- create: Create palette (requires: name; optional: colors)\n- update: Update palette (requires: palette_id; optional: name)\n- delete: Delete palette (requires: palette_id)\n- add_color: Add color to palette (requires: palette_id, color)\n- update_color: Update color in palette (requires: palette_id, color_id, color)\n- delete_color: Remove color from palette (requires: palette_id, color_id)", 'bricks-mcp' ),
+			__( "Manage Bricks color palettes and colors.\n\nActions:\n- list: List all color palettes (no required params)\n- create: Create palette (requires: name; optional: colors)\n- update: Update palette (requires: palette_id; optional: name)\n- delete: Delete palette (requires: palette_id)\n- add_color: Add color to palette (requires: palette_id, color {light, name; optional: raw, parent, utility_classes}). 'hex' accepted as alias for 'light'\n- update_color: Update color in palette (requires: palette_id, color_id; optional fields in color: light, name, raw, parent_color_id, utility_classes). 'hex' accepted as alias for 'light'\n- delete_color: Remove color from palette (requires: palette_id, color_id)", 'bricks-mcp' ),
 			array(
 				'type'       => 'object',
 				'properties' => array(
@@ -1093,7 +1093,7 @@ final class Router {
 					),
 					'color'      => array(
 						'type'        => 'object',
-						'description' => __( 'Color object with raw, id, name fields (add_color: required; update_color: required)', 'bricks-mcp' ),
+						'description' => __( 'Color object with light (hex value), name, raw (CSS variable) fields (add_color: required; update_color: required). "hex" accepted as alias for "light"', 'bricks-mcp' ),
 					),
 					'position'   => array(
 						'type'        => 'integer',
@@ -6135,16 +6135,18 @@ final class Router {
 			);
 		}
 
-		if ( empty( $args['hex'] ) ) {
+		$light_value = $args['light'] ?? $args['hex'] ?? '';
+
+		if ( empty( $light_value ) ) {
 			return new \WP_Error(
-				'missing_hex',
-				__( 'hex is required. Provide a hex color value (e.g., "#3498db").', 'bricks-mcp' )
+				'missing_light',
+				__( 'light (or hex) is required. Provide a hex color value (e.g., "#3498db").', 'bricks-mcp' )
 			);
 		}
 
 		$result = $this->bricks_service->add_color_to_palette(
 			$args['palette_id'],
-			$args['hex'],
+			$light_value,
 			$args['name'],
 			$args['raw'] ?? '',
 			$args['parent_color_id'] ?? $args['parent'] ?? '',
@@ -6191,8 +6193,9 @@ final class Router {
 		// Build fields array mapping tool params to BricksService field names.
 		$fields = array();
 
-		if ( isset( $args['hex'] ) ) {
-			$fields['light'] = $args['hex'];
+		$light_value = $args['light'] ?? $args['hex'] ?? null;
+		if ( null !== $light_value ) {
+			$fields['light'] = $light_value;
 		}
 
 		if ( isset( $args['name'] ) ) {
@@ -6214,7 +6217,7 @@ final class Router {
 		if ( empty( $fields ) ) {
 			return new \WP_Error(
 				'no_fields',
-				__( 'At least one field to update is required (name, hex, raw, parent_color_id, or utility_classes).', 'bricks-mcp' )
+				__( 'At least one field to update is required (name, light (or hex), raw, parent_color_id, or utility_classes).', 'bricks-mcp' )
 			);
 		}
 
