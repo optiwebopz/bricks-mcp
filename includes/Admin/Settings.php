@@ -52,7 +52,7 @@ final class Settings {
 		add_action( 'admin_menu', [ $this, 'add_settings_page' ], 99 );
 		add_action( 'admin_init', [ $this, 'register_settings' ] );
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_admin_scripts' ] );
-		add_action( 'wp_ajax_bricks_mcp_test_connection', [ $this, 'ajax_test_connection' ] );
+		add_action( 'wp_ajax_bricks_mcp_run_diagnostics', [ $this, 'ajax_run_diagnostics' ] );
 		add_action( 'wp_ajax_bricks_mcp_generate_app_password', [ $this, 'ajax_generate_app_password' ] );
 	}
 
@@ -188,6 +188,23 @@ final class Settings {
 			wp_die( esc_html__( 'You do not have sufficient permissions to access this page.', 'bricks-mcp' ) );
 		}
 
+		// Display activation notice if issues were detected on plugin activation.
+		$activation_results = get_transient( 'bricks_mcp_activation_checks' );
+		if ( false !== $activation_results && is_array( $activation_results ) ) {
+			delete_transient( 'bricks_mcp_activation_checks' );
+			$has_issues = false;
+			foreach ( $activation_results as $check ) {
+				if ( 'fail' === ( $check['status'] ?? '' ) ) {
+					$has_issues = true;
+					break;
+				}
+			}
+			if ( $has_issues ) {
+				echo '<div class="notice notice-warning is-dismissible"><p><strong>' . esc_html__( 'Bricks MCP: Some configuration issues were detected during activation.', 'bricks-mcp' ) . '</strong> ';
+				echo esc_html__( 'Click "Run Diagnostics" below for details and fix instructions.', 'bricks-mcp' ) . '</p></div>';
+			}
+		}
+
 		$settings = get_option( self::OPTION_NAME, $this->get_defaults() );
 		?>
 		<div class="wrap">
@@ -206,10 +223,13 @@ final class Settings {
 			</div>
 
 			<?php
+			// Diagnostic panel (replaces Test Connection per D-07).
+			$this->render_diagnostic_panel();
+
 			// Version card.
 			$this->render_version_card();
 
-			// MCP configuration tabs with test connection.
+			// MCP configuration tabs.
 			$this->render_mcp_config();
 			?>
 
@@ -416,7 +436,7 @@ final class Settings {
 	/**
 	 * Render MCP configuration tabs with Claude Code and Gemini snippets.
 	 *
-	 * Includes copy-to-clipboard, brief instructions, and a test connection section.
+	 * Includes copy-to-clipboard and brief instructions.
 	 *
 	 * @return void
 	 */
@@ -577,137 +597,164 @@ final class Settings {
 				</div>
 			</div>
 
-			<!-- Test Connection -->
-			<div class="bricks-mcp-test-connection">
-				<h3><?php esc_html_e( 'Test Connection', 'bricks-mcp' ); ?></h3>
-				<p>
-					<label for="bricks-mcp-test-username"><?php esc_html_e( 'Username:', 'bricks-mcp' ); ?></label><br>
-					<input type="text" id="bricks-mcp-test-username" value="<?php echo esc_attr( $username ); ?>" readonly>
-				</p>
-				<p>
-					<label for="bricks-mcp-test-app-password"><?php esc_html_e( 'Application Password:', 'bricks-mcp' ); ?></label><br>
-					<input type="password" id="bricks-mcp-test-app-password" placeholder="<?php esc_attr_e( 'Enter your Application Password', 'bricks-mcp' ); ?>">
-				</p>
-				<p>
-					<button type="button" id="bricks-mcp-test-connection-btn" class="button">
-						<?php esc_html_e( 'Test Connection', 'bricks-mcp' ); ?>
-					</button>
-					<span id="bricks-mcp-test-spinner" class="spinner"></span>
-				</p>
-				<div id="bricks-mcp-test-result" class="bricks-mcp-test-result"></div>
 			</div>
-		</div>
 		<?php
 	}
 
 	/**
-	 * AJAX handler: Test MCP connection with Application Password.
-	 *
-	 * Makes a server-side authenticated request to the REST API to verify
-	 * both endpoint reachability and Application Password auth.
+	 * AJAX handler: Run all diagnostic checks and return structured results.
 	 *
 	 * @return void
 	 */
-	public function ajax_test_connection(): void {
+	public function ajax_run_diagnostics(): void {
 		check_ajax_referer( 'bricks_mcp_settings_nonce', 'nonce' );
 
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'bricks-mcp' ) ], 403 );
 		}
 
-		$username     = sanitize_text_field( wp_unslash( $_POST['username'] ?? '' ) );
-		$app_password = sanitize_text_field( wp_unslash( $_POST['app_password'] ?? '' ) );
+		$runner = new \BricksMCP\Admin\DiagnosticRunner();
+		$runner->register_defaults();
+		$results = $runner->run_all();
 
-		if ( empty( $username ) || empty( $app_password ) ) {
-			wp_send_json_error( [ 'message' => __( 'Username and Application Password are required.', 'bricks-mcp' ) ] );
-		}
+		wp_send_json_success( $results );
+	}
 
-		$response = wp_remote_post(
-			rest_url( 'bricks-mcp/v1/mcp' ),
-			[
-				'headers'   => [
-					'Authorization' => 'Basic ' . base64_encode( $username . ':' . $app_password ),
-					'Content-Type'  => 'application/json',
-					'Accept'        => 'application/json, text/event-stream',
-				],
-				'body'      => wp_json_encode(
-					[
-						'jsonrpc' => '2.0',
-						'id'      => 1,
-						'method'  => 'initialize',
-						'params'  => [
-							'protocolVersion' => '2025-03-26',
-							'capabilities'    => new \stdClass(),
-							'clientInfo'      => [
-								'name'    => 'bricks-mcp-test',
-								'version' => BRICKS_MCP_VERSION,
-							],
-						],
-					]
-				),
-				'timeout'   => 10,
-				'sslverify' => is_ssl(),
-			]
-		);
+	/**
+	 * Render the System Status diagnostic panel.
+	 *
+	 * Replaces the old Test Connection panel per D-07. Provides a Run Diagnostics
+	 * button that executes all checks via AJAX and renders a colored checklist.
+	 * Also provides a Copy Results button for support ticket use.
+	 *
+	 * @return void
+	 */
+	private function render_diagnostic_panel(): void {
+		?>
+		<style>
+			.bricks-mcp-diagnostics { margin: 20px 0; background: #fff; border: 1px solid #c3c4c7; padding: 15px 20px; }
+			.bricks-mcp-diagnostics h3 { margin-top: 0; }
+			.bricks-mcp-diagnostics-actions { margin: 10px 0; display: flex; align-items: center; gap: 8px; }
+			.bricks-mcp-check { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f0f0f1; }
+			.bricks-mcp-check:last-child { border-bottom: none; }
+			.bricks-mcp-check .dashicons { margin-top: 2px; font-size: 20px; width: 20px; height: 20px; }
+			.bricks-mcp-check--pass .dashicons { color: #00a32a; }
+			.bricks-mcp-check--warn .dashicons { color: #dba617; }
+			.bricks-mcp-check--fail .dashicons { color: #d63638; }
+			.bricks-mcp-check--skipped .dashicons { color: #787c82; }
+			.bricks-mcp-check-content p { margin: 2px 0 0; }
+			.bricks-mcp-check-fixes { margin-top: 5px; padding: 8px 12px; background: #f6f7f7; border-radius: 3px; }
+			.bricks-mcp-check-fixes ul { margin: 5px 0 0 15px; }
+			.bricks-mcp-diagnostics-summary { font-size: 14px; margin: 10px 0; }
+			#bricks-mcp-diagnostics-spinner { float: none; margin: 0; }
+		</style>
 
-		if ( is_wp_error( $response ) ) {
-			wp_send_json_error(
-				[
-					'message' => sprintf(
-						/* translators: %s: error message */
-						__( 'Endpoint unreachable: %s', 'bricks-mcp' ),
-						$response->get_error_message()
-					),
-				]
-			);
-		}
+		<div class="bricks-mcp-diagnostics" id="bricks-mcp-diagnostics">
+			<h3><?php esc_html_e( 'System Status', 'bricks-mcp' ); ?></h3>
+			<p class="description"><?php esc_html_e( 'Run diagnostics to check if your site is properly configured for MCP connections.', 'bricks-mcp' ); ?></p>
+			<div class="bricks-mcp-diagnostics-actions">
+				<button type="button" class="button button-primary" id="bricks-mcp-run-diagnostics">
+					<?php esc_html_e( 'Run Diagnostics', 'bricks-mcp' ); ?>
+				</button>
+				<button type="button" class="button" id="bricks-mcp-copy-results" style="display:none;">
+					<?php esc_html_e( 'Copy Results', 'bricks-mcp' ); ?>
+				</button>
+				<span class="spinner" id="bricks-mcp-diagnostics-spinner"></span>
+			</div>
+			<div id="bricks-mcp-diagnostics-results"></div>
+		</div>
 
-		$code = wp_remote_retrieve_response_code( $response );
+		<script>
+		(function() {
+			var iconMap = {
+				pass:    'dashicons-yes-alt',
+				warn:    'dashicons-warning',
+				fail:    'dashicons-dismiss',
+				skipped: 'dashicons-minus'
+			};
 
-		if ( 401 === $code || 403 === $code ) {
-			wp_send_json_error( [ 'message' => __( 'Authentication failed -- check your Application Password.', 'bricks-mcp' ) ] );
-		}
+			var diagnosticsData = null;
 
-		if ( 200 !== $code ) {
-			wp_send_json_error(
-				[
-					'message' => sprintf(
-						/* translators: %d: HTTP status code */
-						__( 'Unexpected response (HTTP %d).', 'bricks-mcp' ),
-						$code
-					),
-				]
-			);
-		}
+			document.getElementById('bricks-mcp-run-diagnostics').addEventListener('click', function() {
+				var btn      = this;
+				var spinner  = document.getElementById('bricks-mcp-diagnostics-spinner');
+				var results  = document.getElementById('bricks-mcp-diagnostics-results');
+				var copyBtn  = document.getElementById('bricks-mcp-copy-results');
 
-		// Parse SSE response body to extract JSON-RPC result.
-		$body = wp_remote_retrieve_body( $response );
+				btn.disabled = true;
+				spinner.classList.add('is-active');
+				results.innerHTML = '';
+				copyBtn.style.display = 'none';
 
-		// SSE format: lines starting with "data: " contain the JSON payload.
-		$json_rpc_result = null;
-		foreach ( explode( "\n", $body ) as $line ) {
-			$line = trim( $line );
-			if ( str_starts_with( $line, 'data: ' ) ) {
-				$json_rpc_result = json_decode( substr( $line, 6 ), true );
-				break;
-			}
-		}
+				var data = new FormData();
+				data.append('action', 'bricks_mcp_run_diagnostics');
+				data.append('nonce', bricksMcpUpdates.nonce);
 
-		if ( ! is_array( $json_rpc_result ) || ! isset( $json_rpc_result['result']['protocolVersion'] ) ) {
-			wp_send_json_error( [ 'message' => __( 'Unexpected response format.', 'bricks-mcp' ) ] );
-		}
+				fetch(bricksMcpUpdates.ajaxUrl, { method: 'POST', body: data })
+					.then(function(r) { return r.json(); })
+					.then(function(response) {
+						btn.disabled = false;
+						spinner.classList.remove('is-active');
 
-		$protocol_version = $json_rpc_result['result']['protocolVersion'];
+						if (!response.success) {
+							results.innerHTML = '<p style="color:#d63638;">' + (response.data && response.data.message ? response.data.message : '<?php echo esc_js( __( 'An error occurred.', 'bricks-mcp' ) ); ?>') + '</p>';
+							return;
+						}
 
-		wp_send_json_success(
-			[
-				'message' => sprintf(
-					/* translators: %s: protocol version */
-					__( 'Connection successful! MCP server is reachable and authenticated (protocol %s).', 'bricks-mcp' ),
-					$protocol_version
-				),
-			]
-		);
+						diagnosticsData = response.data;
+						var html = '<p class="bricks-mcp-diagnostics-summary"><strong>' + response.data.summary + '</strong></p>';
+
+						response.data.checks.forEach(function(check) {
+							var icon = iconMap[check.status] || 'dashicons-minus';
+							var fixHtml = '';
+							if (check.fix_steps && check.fix_steps.length > 0) {
+								fixHtml = '<div class="bricks-mcp-check-fixes"><strong><?php echo esc_js( __( 'How to fix:', 'bricks-mcp' ) ); ?></strong><ul>';
+								check.fix_steps.forEach(function(step) {
+									fixHtml += '<li>' + step + '</li>';
+								});
+								fixHtml += '</ul></div>';
+							}
+							html += '<div class="bricks-mcp-check bricks-mcp-check--' + check.status + '">';
+							html += '<span class="dashicons ' + icon + '"></span>';
+							html += '<div class="bricks-mcp-check-content">';
+							html += '<strong>' + check.label + '</strong>';
+							html += '<p>' + check.message + '</p>';
+							html += fixHtml;
+							html += '</div></div>';
+						});
+
+						results.innerHTML = html;
+						copyBtn.style.display = 'inline-block';
+					})
+					.catch(function(err) {
+						btn.disabled = false;
+						spinner.classList.remove('is-active');
+						results.innerHTML = '<p style="color:#d63638;"><?php echo esc_js( __( 'Request failed. Please try again.', 'bricks-mcp' ) ); ?></p>';
+					});
+			});
+
+			document.getElementById('bricks-mcp-copy-results').addEventListener('click', function() {
+				if (!diagnosticsData) return;
+				var copyBtn = this;
+				var text = '';
+				diagnosticsData.checks.forEach(function(check) {
+					text += '[' + check.status.toUpperCase() + '] ' + check.label + ': ' + check.message + '\n';
+					if (check.fix_steps && check.fix_steps.length > 0) {
+						check.fix_steps.forEach(function(step) {
+							text += '  Fix: ' + step + '\n';
+						});
+					}
+				});
+				navigator.clipboard.writeText(text).then(function() {
+					copyBtn.textContent = '<?php echo esc_js( __( 'Copied!', 'bricks-mcp' ) ); ?>';
+					setTimeout(function() {
+						copyBtn.textContent = '<?php echo esc_js( __( 'Copy Results', 'bricks-mcp' ) ); ?>';
+					}, 2000);
+				});
+			});
+		}());
+		</script>
+		<?php
 	}
 
 	/**

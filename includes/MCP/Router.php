@@ -5669,7 +5669,8 @@ final class Router {
 			'fonts'              => '## Font Management',
 			'import_export'      => '## Import & Export',
 			'workflows'          => '## Common Workflows',
-			'gotchas'            => '## Key Gotchas',
+			'gotchas'                   => '## Key Gotchas',
+			'connection_troubleshooting' => '## Connection Troubleshooting',
 		);
 
 		if ( ! isset( $section_map[ $section ] ) ) {

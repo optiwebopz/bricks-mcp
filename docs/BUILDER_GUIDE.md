@@ -1599,3 +1599,47 @@ Export is read-only (no license). Import requires a license (write operation).
 15. **Popup triggers are NOT popup settings** — triggers use `_interactions` on elements (click, scroll, exit intent). `_bricks_template_settings` only stores display behavior (close, backdrop, sizing, limits). These are separate systems managed by different tools.
 16. **`toggle-mode` needs dark mode colors** — The toggle element only works if dark mode variants are configured in the Bricks color manager. Without them, the button renders but does nothing.
 17. **Builder paste/import behavior settings** — `builderHtmlCssConverter` controls HTML/CSS paste conversion (`confirm`|`enabled`|`disabled`), `builderGlobalClassesImport` controls global class auto-import on paste (`confirm`|`enabled`|`disabled`). Both default to `confirm`. Read via `bricks:get_settings` with `category: builder`.
+
+## Connection Troubleshooting
+
+If you're having trouble connecting to the MCP server, work through these checks in order:
+
+### 1. HTTPS Required
+Application Passwords require HTTPS by default. If your site doesn't use HTTPS:
+- Enable SSL via your hosting provider
+- If behind a reverse proxy (Cloudflare, load balancer), ensure `X-Forwarded-Proto: https` header is set
+- As a last resort: `add_filter( 'wp_is_application_passwords_available', '__return_true' );` in your theme's functions.php
+
+### 2. Application Passwords Disabled
+Some plugins disable Application Passwords:
+- **Disable Application Passwords** plugin: Deactivate it
+- **iThemes/Solid Security**: Check Settings > Advanced > Application Passwords
+- **WP Cerber**: Check Security Rules > Application Passwords
+- **Custom code**: Search mu-plugins/ for `wp_is_application_passwords_available`
+
+### 3. REST API Blocked
+Security plugins commonly block the REST API for unauthenticated users:
+- **Perfmatters**: Add `bricks-mcp` to Settings > REST API > Allowed Routes
+- **All In One WP Security**: Disable Firewall > PHP Firewall Rules > REST API
+- **Disable WP REST API** plugin: Deactivate or whitelist `bricks-mcp`
+- **WP Cerber**: Check Hardening > Disable REST API
+
+Note: Blocking REST API for *unauthenticated* users usually doesn't affect MCP because clients authenticate via Application Passwords. But if Application Passwords are also broken, both issues compound.
+
+### 4. Permalink Structure
+The REST API requires pretty permalinks. Go to Settings > Permalinks and select any structure other than "Plain".
+
+### 5. Hosting-Specific Issues
+- **WP Engine**: May strip Authorization headers. Add to .htaccess: `SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1`
+- **Kinsta**: REST API works by default. If blocked, check Kinsta security settings.
+- **Flywheel**: May strip Authorization headers. Same .htaccess fix as WP Engine.
+- **Pantheon**: May disable Application Passwords by default. Add `add_filter( 'wp_is_application_passwords_available', '__return_true' );` to wp-config.php.
+- **Cloudflare**: WAF rules may block /wp-json/ traffic. Add a WAF exception for the bricks-mcp/v1/ path.
+- **Server-level rate limiting**: If diagnostics pass but external AI tools get 429 errors, check Cloudflare/CDN rate limits on /wp-json/.
+
+### 6. Run Full Diagnostics
+Use the built-in diagnostic tool from your AI client:
+```
+get_site_info(action: 'diagnose')
+```
+Or click "Run Diagnostics" on the Bricks MCP settings page in WordPress admin.
