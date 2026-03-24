@@ -8658,7 +8658,7 @@ final class Router {
 						'name'     => 'container',
 						'children' => array(
 							array( 'name' => 'woocommerce-breadcrumbs', 'settings' => array() ),
-							array( 'name' => 'products-archive-description', 'settings' => array() ),
+							array( 'name' => 'woocommerce-products-archive-description', 'settings' => array() ),
 						),
 					),
 				),
@@ -8674,8 +8674,8 @@ final class Router {
 							'_alignItems'     => 'center',
 						),
 						'children' => array(
-							array( 'name' => 'products-total-results', 'settings' => array() ),
-							array( 'name' => 'products-orderby', 'settings' => array() ),
+							array( 'name' => 'woocommerce-products-total-results', 'settings' => array() ),
+							array( 'name' => 'woocommerce-products-orderby', 'settings' => array() ),
 						),
 					),
 				),
@@ -8697,7 +8697,7 @@ final class Router {
 									'_width:mobile_portrait' => '100%',
 								),
 								'children' => array(
-									array( 'name' => 'products-filter', 'settings' => array() ),
+									array( 'name' => 'woocommerce-products-filter', 'settings' => array() ),
 								),
 							),
 							array(
@@ -8707,8 +8707,8 @@ final class Router {
 									'_width:mobile_portrait' => '100%',
 								),
 								'children' => array(
-									array( 'name' => 'products', 'settings' => array() ),
-									array( 'name' => 'products-pagination', 'settings' => array() ),
+									array( 'name' => 'woocommerce-products', 'settings' => array() ),
+									array( 'name' => 'woocommerce-products-pagination', 'settings' => array() ),
 								),
 							),
 						),
@@ -8731,8 +8731,7 @@ final class Router {
 					array(
 						'name'     => 'container',
 						'children' => array(
-							array( 'name' => 'woocommerce-notice', 'settings' => array() ),
-							array(
+		array(
 								'name'     => 'heading',
 								'settings' => array(
 									'tag'  => 'h1',
@@ -8760,8 +8759,8 @@ final class Router {
 									'_width:mobile_portrait' => '100%',
 								),
 								'children' => array(
-									array( 'name' => 'cart-items', 'settings' => array() ),
-									array( 'name' => 'cart-coupon', 'settings' => array() ),
+									array( 'name' => 'woocommerce-cart-items', 'settings' => array() ),
+									array( 'name' => 'woocommerce-cart-coupon', 'settings' => array() ),
 								),
 							),
 							array(
@@ -8771,7 +8770,7 @@ final class Router {
 									'_width:mobile_portrait' => '100%',
 								),
 								'children' => array(
-									array( 'name' => 'cart-totals', 'settings' => array() ),
+									array( 'name' => 'woocommerce-cart-collaterals', 'settings' => array() ),
 									array(
 										'name'     => 'container',
 										'settings' => array(
@@ -8827,8 +8826,7 @@ final class Router {
 							'_padding'    => array( 'top' => '80px', 'bottom' => '80px' ),
 						),
 						'children' => array(
-							array( 'name' => 'woocommerce-notice', 'settings' => array() ),
-							array(
+		array(
 								'name'     => 'heading',
 								'settings' => array( 'tag' => 'h2', 'text' => 'Your cart is empty' ),
 							),
@@ -8863,13 +8861,12 @@ final class Router {
 					array(
 						'name'     => 'container',
 						'children' => array(
-							array( 'name' => 'woocommerce-notice', 'settings' => array() ),
-							array(
+		array(
 								'name'     => 'heading',
 								'settings' => array( 'tag' => 'h1', 'text' => 'Checkout' ),
 							),
-							array( 'name' => 'checkout-login', 'settings' => array() ),
-							array( 'name' => 'checkout-coupon', 'settings' => array() ),
+							array( 'name' => 'woocommerce-account-form-login', 'settings' => array() ),
+							array( 'name' => 'woocommerce-cart-coupon', 'settings' => array() ),
 						),
 					),
 				),
@@ -8891,7 +8888,7 @@ final class Router {
 									'_width:mobile_portrait' => '100%',
 								),
 								'children' => array(
-									array( 'name' => 'checkout-customer-details', 'settings' => array() ),
+									array( 'name' => 'woocommerce-checkout-customer-details', 'settings' => array() ),
 								),
 							),
 							array(
@@ -8901,7 +8898,7 @@ final class Router {
 									'_width:mobile_portrait' => '100%',
 								),
 								'children' => array(
-									array( 'name' => 'checkout-order-review', 'settings' => array() ),
+									array( 'name' => 'woocommerce-checkout-order-review', 'settings' => array() ),
 									array(
 										'name'     => 'container',
 										'settings' => array(
@@ -8956,8 +8953,7 @@ final class Router {
 							'_alignItems' => 'center',
 						),
 						'children' => array(
-							array( 'name' => 'woocommerce-notice', 'settings' => array() ),
-							array(
+		array(
 								'name'     => 'heading',
 								'settings' => array( 'tag' => 'h1', 'text' => 'My Account' ),
 							),
@@ -8976,7 +8972,7 @@ final class Router {
 											'_width:mobile_portrait' => '100%',
 										),
 										'children' => array(
-											array( 'name' => 'account-login-form', 'settings' => array() ),
+											array( 'name' => 'woocommerce-account-form-login', 'settings' => array() ),
 										),
 									),
 									array(
@@ -8986,7 +8982,7 @@ final class Router {
 											'_width:mobile_portrait' => '100%',
 										),
 										'children' => array(
-											array( 'name' => 'account-register-form', 'settings' => array() ),
+											array( 'name' => 'woocommerce-account-form-register', 'settings' => array() ),
 										),
 									),
 								),
@@ -9011,12 +9007,11 @@ final class Router {
 					array(
 						'name'     => 'container',
 						'children' => array(
-							array( 'name' => 'woocommerce-notice', 'settings' => array() ),
-							array(
+		array(
 								'name'     => 'heading',
 								'settings' => array( 'tag' => 'h1', 'text' => 'My Account' ),
 							),
-							array( 'name' => 'account-page', 'settings' => array() ),
+							array( 'name' => 'woocommerce-account-page', 'settings' => array() ),
 						),
 					),
 				),
@@ -9064,7 +9059,7 @@ final class Router {
 								),
 								'children' => array(
 									array(
-										'name'     => 'checkout-thankyou',
+										'name'     => 'woocommerce-checkout-thankyou',
 										'settings' => array(
 											// Message section — success notice styling.
 											'messageMargin'     => array( 'top' => '30px', 'right' => '0', 'bottom' => '30px', 'left' => '0' ),
@@ -9198,9 +9193,10 @@ final class Router {
 			return $template_id;
 		}
 
-		// Save pre-populated elements.
+		// Save pre-populated elements (scaffold uses simplified nested format, normalize to flat).
 		$elements    = $this->get_woocommerce_scaffold( $template_type );
-		$save_result = $this->bricks_service->save_bricks_content( $template_id, $elements );
+		$elements    = $this->bricks_service->normalize_elements( $elements );
+		$save_result = $this->bricks_service->save_elements( $template_id, $elements );
 
 		if ( is_wp_error( $save_result ) ) {
 			wp_delete_post( $template_id, true );
