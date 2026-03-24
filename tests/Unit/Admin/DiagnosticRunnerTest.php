@@ -180,7 +180,15 @@ final class DiagnosticRunnerTest extends TestCase {
 	 * @return void
 	 */
 	public function test_run_all_returns_overall_pass_when_all_checks_pass(): void {
-		$this->markTestIncomplete( 'Awaiting production code.' );
+		$runner = new DiagnosticRunner();
+		$runner->register( new FakeCheck( 'check_a', 'pass' ) );
+		$runner->register( new FakeCheck( 'check_b', 'pass' ) );
+		$runner->register( new FakeCheck( 'check_c', 'pass' ) );
+
+		$result = $runner->run_all();
+
+		$this->assertSame( 'pass', $result['overall_status'] );
+		$this->assertCount( 3, $result['checks'] );
 	}
 
 	/**
@@ -189,7 +197,24 @@ final class DiagnosticRunnerTest extends TestCase {
 	 * @return void
 	 */
 	public function test_run_all_skips_dependent_checks_on_failure(): void {
-		$this->markTestIncomplete( 'Awaiting production code.' );
+		$runner = new DiagnosticRunner();
+		$runner->register( new FakeCheck( 'check_a', 'fail' ) );
+		$runner->register( new FakeCheck( 'check_b', 'pass', array( 'check_a' ) ) );
+
+		$result = $runner->run_all();
+
+		// Find check_b in results.
+		$check_b_result = null;
+		foreach ( $result['checks'] as $check ) {
+			if ( 'check_b' === $check['id'] ) {
+				$check_b_result = $check;
+				break;
+			}
+		}
+
+		$this->assertNotNull( $check_b_result, 'check_b should be in results' );
+		$this->assertSame( 'skipped', $check_b_result['status'] );
+		$this->assertStringContainsString( 'blocked by', $check_b_result['message'] );
 	}
 
 	/**
@@ -198,7 +223,14 @@ final class DiagnosticRunnerTest extends TestCase {
 	 * @return void
 	 */
 	public function test_run_all_returns_overall_fail_when_any_check_fails(): void {
-		$this->markTestIncomplete( 'Awaiting production code.' );
+		$runner = new DiagnosticRunner();
+		$runner->register( new FakeCheck( 'check_a', 'pass' ) );
+		$runner->register( new FakeCheck( 'check_b', 'fail' ) );
+		$runner->register( new FakeCheck( 'check_c', 'pass' ) );
+
+		$result = $runner->run_all();
+
+		$this->assertSame( 'fail', $result['overall_status'] );
 	}
 
 	/**
@@ -207,7 +239,14 @@ final class DiagnosticRunnerTest extends TestCase {
 	 * @return void
 	 */
 	public function test_run_all_returns_overall_warn_when_any_check_warns(): void {
-		$this->markTestIncomplete( 'Awaiting production code.' );
+		$runner = new DiagnosticRunner();
+		$runner->register( new FakeCheck( 'check_a', 'pass' ) );
+		$runner->register( new FakeCheck( 'check_b', 'warn' ) );
+		$runner->register( new FakeCheck( 'check_c', 'pass' ) );
+
+		$result = $runner->run_all();
+
+		$this->assertSame( 'warn', $result['overall_status'] );
 	}
 
 	/**
@@ -216,7 +255,28 @@ final class DiagnosticRunnerTest extends TestCase {
 	 * @return void
 	 */
 	public function test_resolve_order_respects_dependencies(): void {
-		$this->markTestIncomplete( 'Awaiting production code.' );
+		$runner = new DiagnosticRunner();
+		// Register b (depends on a) before a.
+		$runner->register( new FakeCheck( 'check_b', 'pass', array( 'check_a' ) ) );
+		$runner->register( new FakeCheck( 'check_a', 'pass' ) );
+
+		$result = $runner->run_all();
+
+		// Find positions of check_a and check_b in results.
+		$pos_a = null;
+		$pos_b = null;
+		foreach ( $result['checks'] as $index => $check ) {
+			if ( 'check_a' === $check['id'] ) {
+				$pos_a = $index;
+			}
+			if ( 'check_b' === $check['id'] ) {
+				$pos_b = $index;
+			}
+		}
+
+		$this->assertNotNull( $pos_a, 'check_a should be in results' );
+		$this->assertNotNull( $pos_b, 'check_b should be in results' );
+		$this->assertLessThan( $pos_b, $pos_a, 'check_a (dependency) should run before check_b' );
 	}
 
 	/**
@@ -225,6 +285,14 @@ final class DiagnosticRunnerTest extends TestCase {
 	 * @return void
 	 */
 	public function test_summary_string_format(): void {
-		$this->markTestIncomplete( 'Awaiting production code.' );
+		$runner = new DiagnosticRunner();
+		$runner->register( new FakeCheck( 'check_a', 'pass' ) );
+		$runner->register( new FakeCheck( 'check_b', 'pass' ) );
+		$runner->register( new FakeCheck( 'check_c', 'fail' ) );
+
+		$result = $runner->run_all();
+
+		$this->assertArrayHasKey( 'summary', $result );
+		$this->assertStringContainsString( '/3 checks passed', $result['summary'] );
 	}
 }
