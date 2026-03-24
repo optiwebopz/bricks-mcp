@@ -238,7 +238,7 @@ class BricksService {
 	 *
 	 * @return void
 	 */
-	private function unhook_bricks_meta_filters(): void {
+	public function unhook_bricks_meta_filters(): void {
 		global $wp_filter;
 
 		$sanitize_key = 'sanitize_post_meta_' . self::META_KEY;
@@ -272,7 +272,7 @@ class BricksService {
 	 *
 	 * @return void
 	 */
-	private function rehook_bricks_meta_filters(): void {
+	public function rehook_bricks_meta_filters(): void {
 		global $wp_filter;
 
 		$sanitize_key = 'sanitize_post_meta_' . self::META_KEY;
