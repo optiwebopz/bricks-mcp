@@ -1,0 +1,230 @@
+<?php
+/**
+ * DiagnosticRunner unit tests.
+ *
+ * @package BricksMCP
+ * @license GPL-2.0-or-later
+ */
+
+declare(strict_types=1);
+
+namespace BricksMCP\Tests\Unit\Admin;
+
+use PHPUnit\Framework\TestCase;
+use BricksMCP\Admin\DiagnosticRunner;
+
+// WordPress function stubs for unit tests.
+if ( ! function_exists( '__' ) ) {
+	/**
+	 * Stub for WordPress translation function.
+	 *
+	 * @param string $text   Text to translate.
+	 * @param string $domain Text domain (unused in tests).
+	 * @return string
+	 */
+	function __( string $text, string $domain = '' ): string { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		return $text;
+	}
+}
+
+if ( ! function_exists( 'esc_html' ) ) {
+	/**
+	 * Stub for WordPress esc_html function.
+	 *
+	 * @param string $text Text to escape.
+	 * @return string
+	 */
+	function esc_html( string $text ): string { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		return $text;
+	}
+}
+
+if ( ! function_exists( 'apply_filters' ) ) {
+	/**
+	 * Stub for WordPress apply_filters function.
+	 *
+	 * @param string $tag   Filter tag (unused in tests).
+	 * @param mixed  $value Value to filter.
+	 * @param mixed  ...$args Additional arguments (unused in tests).
+	 * @return mixed
+	 */
+	function apply_filters( string $tag, mixed $value, mixed ...$args ): mixed { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+		return $value;
+	}
+}
+
+/**
+ * Fake check implementation for testing.
+ */
+class FakeCheck implements \BricksMCP\Admin\DiagnosticCheck {
+
+	/**
+	 * Check ID.
+	 *
+	 * @var string
+	 */
+	private string $id;
+
+	/**
+	 * Check label.
+	 *
+	 * @var string
+	 */
+	private string $label;
+
+	/**
+	 * Check category.
+	 *
+	 * @var string
+	 */
+	private string $category;
+
+	/**
+	 * Check dependencies (array of check IDs).
+	 *
+	 * @var array<string>
+	 */
+	private array $dependencies;
+
+	/**
+	 * Check status to return.
+	 *
+	 * @var string
+	 */
+	private string $status;
+
+	/**
+	 * Constructor.
+	 *
+	 * @param string        $id           Check ID.
+	 * @param string        $status       Status to return ('pass', 'warn', 'fail').
+	 * @param array<string> $dependencies IDs of dependency checks.
+	 * @param string        $label        Human-readable label.
+	 * @param string        $category     Check category.
+	 */
+	public function __construct(
+		string $id,
+		string $status = 'pass',
+		array $dependencies = array(),
+		string $label = '',
+		string $category = 'connectivity'
+	) {
+		$this->id           = $id;
+		$this->label        = $label ?: ucfirst( $id );
+		$this->category     = $category;
+		$this->dependencies = $dependencies;
+		$this->status       = $status;
+	}
+
+	/**
+	 * Get check ID.
+	 *
+	 * @return string
+	 */
+	public function id(): string {
+		return $this->id;
+	}
+
+	/**
+	 * Get check label.
+	 *
+	 * @return string
+	 */
+	public function label(): string {
+		return $this->label;
+	}
+
+	/**
+	 * Get check category.
+	 *
+	 * @return string
+	 */
+	public function category(): string {
+		return $this->category;
+	}
+
+	/**
+	 * Get check dependencies.
+	 *
+	 * @return array<string>
+	 */
+	public function dependencies(): array {
+		return $this->dependencies;
+	}
+
+	/**
+	 * Run the check.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function run(): array {
+		return array(
+			'id'        => $this->id,
+			'label'     => $this->label,
+			'status'    => $this->status,
+			'message'   => $this->label . ' ' . $this->status,
+			'fix_steps' => 'fail' === $this->status ? array( 'Fix ' . $this->id ) : array(),
+			'category'  => $this->category,
+		);
+	}
+}
+
+/**
+ * Tests for DiagnosticRunner.
+ */
+final class DiagnosticRunnerTest extends TestCase {
+
+	/**
+	 * Test that run_all returns overall_status 'pass' when all checks pass.
+	 *
+	 * @return void
+	 */
+	public function test_run_all_returns_overall_pass_when_all_checks_pass(): void {
+		$this->markTestIncomplete( 'Awaiting production code.' );
+	}
+
+	/**
+	 * Test that run_all skips dependent checks when a dependency fails.
+	 *
+	 * @return void
+	 */
+	public function test_run_all_skips_dependent_checks_on_failure(): void {
+		$this->markTestIncomplete( 'Awaiting production code.' );
+	}
+
+	/**
+	 * Test that run_all returns overall_status 'fail' when any check fails.
+	 *
+	 * @return void
+	 */
+	public function test_run_all_returns_overall_fail_when_any_check_fails(): void {
+		$this->markTestIncomplete( 'Awaiting production code.' );
+	}
+
+	/**
+	 * Test that run_all returns overall_status 'warn' when any check warns.
+	 *
+	 * @return void
+	 */
+	public function test_run_all_returns_overall_warn_when_any_check_warns(): void {
+		$this->markTestIncomplete( 'Awaiting production code.' );
+	}
+
+	/**
+	 * Test that resolve_order respects check dependencies.
+	 *
+	 * @return void
+	 */
+	public function test_resolve_order_respects_dependencies(): void {
+		$this->markTestIncomplete( 'Awaiting production code.' );
+	}
+
+	/**
+	 * Test that summary string has the expected format.
+	 *
+	 * @return void
+	 */
+	public function test_summary_string_format(): void {
+		$this->markTestIncomplete( 'Awaiting production code.' );
+	}
+}
