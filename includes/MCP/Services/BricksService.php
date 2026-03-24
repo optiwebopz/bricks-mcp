@@ -5655,6 +5655,131 @@ class BricksService {
 	}
 
 	/**
+	 * Delete multiple global variables in a single operation.
+	 *
+	 * Reads the option once, removes matching variables, writes once, regenerates CSS once.
+	 * Uses partial-success model per D-13.
+	 *
+	 * @param array<int, string> $variable_ids Array of variable ID strings.
+	 * @return array<string, mixed>|\WP_Error Partial result or WP_Error if all fail.
+	 */
+	public function batch_delete_global_variables( array $variable_ids ): array|\WP_Error {
+		if ( count( $variable_ids ) > 50 ) {
+			return new \WP_Error( 'batch_too_large', __( 'Maximum 50 variable deletions per call.', 'bricks-mcp' ) );
+		}
+
+		$variables = get_option( 'bricks_global_variables', [] );
+
+		if ( ! is_array( $variables ) ) {
+			$variables = [];
+		}
+
+		// Build a lookup map from ID to index.
+		$var_map = [];
+		foreach ( $variables as $i => $var ) {
+			$var_map[ $var['id'] ?? '' ] = $i;
+		}
+
+		$success           = [];
+		$errors            = [];
+		$indices_to_remove = [];
+
+		foreach ( $variable_ids as $vid ) {
+			if ( isset( $var_map[ $vid ] ) ) {
+				$success[]           = [ 'id' => $vid, 'status' => 'deleted' ];
+				$indices_to_remove[] = $var_map[ $vid ];
+			} else {
+				$errors[] = [ 'id' => $vid, 'error' => 'Variable not found' ];
+			}
+		}
+
+		if ( empty( $success ) ) {
+			return new \WP_Error( 'all_failed', __( 'None of the specified variable IDs were found.', 'bricks-mcp' ) );
+		}
+
+		// Sort descending to avoid index shifting during splice.
+		rsort( $indices_to_remove );
+		foreach ( $indices_to_remove as $idx ) {
+			array_splice( $variables, $idx, 1 );
+		}
+
+		update_option( 'bricks_global_variables', $variables );
+
+		$css_regenerated = $this->regenerate_style_manager_css();
+
+		return [
+			'success'         => $success,
+			'errors'          => $errors,
+			'summary'         => [
+				'total'     => count( $variable_ids ),
+				'succeeded' => count( $success ),
+				'failed'    => count( $errors ),
+			],
+			'css_regenerated' => $css_regenerated,
+		];
+	}
+
+	/**
+	 * Search global variables by name and/or value substring.
+	 *
+	 * Case-insensitive matching using stripos(). Returns flat array of matching variables.
+	 *
+	 * @param string $name        Name substring filter (empty = no filter).
+	 * @param string $value       Value substring filter (empty = no filter).
+	 * @param string $category_id Category ID filter (empty = no filter).
+	 * @return array<string, mixed> Search results with count and variables.
+	 */
+	public function search_global_variables( string $name = '', string $value = '', string $category_id = '' ): array {
+		$variables = get_option( 'bricks_global_variables', [] );
+
+		if ( ! is_array( $variables ) ) {
+			$variables = [];
+		}
+
+		// If all filters are empty, return all variables.
+		if ( '' === $name && '' === $value && '' === $category_id ) {
+			return [
+				'variables' => array_values( $variables ),
+				'count'     => count( $variables ),
+				'filters'   => [],
+			];
+		}
+
+		$filtered = array_values(
+			array_filter(
+				$variables,
+				function ( array $var ) use ( $name, $value, $category_id ): bool {
+					if ( '' !== $name && false === stripos( $var['name'] ?? '', $name ) ) {
+						return false;
+					}
+
+					if ( '' !== $value && false === stripos( $var['value'] ?? '', $value ) ) {
+						return false;
+					}
+
+					if ( '' !== $category_id && ( $var['category'] ?? '' ) !== $category_id ) {
+						return false;
+					}
+
+					return true;
+				}
+			)
+		);
+
+		return [
+			'variables' => $filtered,
+			'count'     => count( $filtered ),
+			'filters'   => array_filter(
+				[
+					'name'        => $name,
+					'value'       => $value,
+					'category_id' => $category_id,
+				]
+			),
+		];
+	}
+
+	/**
 	 * Get Bricks global settings with optional category filtering and key masking.
 	 *
 	 * Returns build-relevant settings categorized by group. API keys are always
