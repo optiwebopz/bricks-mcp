@@ -143,6 +143,9 @@ final class Plugin {
 	private function init_admin(): void {
 		$this->admin_settings = new Admin\Settings();
 		$this->admin_settings->init();
+
+		$site_health = new Admin\SiteHealth();
+		$site_health->init();
 	}
 
 	/**
