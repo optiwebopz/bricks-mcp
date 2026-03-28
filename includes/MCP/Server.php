@@ -60,6 +60,8 @@ final class Server {
 	public function init(): void {
 		add_action( 'rest_api_init', [ $this, 'register_routes' ] );
 		add_filter( 'rest_request_before_callbacks', [ $this, 'intercept_json_parse_error' ], 10, 3 );
+		add_filter( 'rest_post_dispatch', [ $this, 'add_www_authenticate_header' ], 10, 3 );
+		add_action( 'parse_request', [ $this, 'handle_well_known_request' ] );
 	}
 
 	/**
@@ -92,6 +94,53 @@ final class Server {
 				],
 			]
 		);
+
+	}
+
+	/**
+	 * Handle /.well-known/oauth-protected-resource requests at the site root.
+	 *
+	 * MCP clients that receive a 401 follow the MCP 2025 auth spec (RFC 9728)
+	 * and look for this endpoint at the site root — NOT under /wp-json/.
+	 * Without this handler, WordPress returns a 404 HTML page.
+	 *
+	 * We do not implement OAuth. This endpoint tells MCP clients that this
+	 * server uses WordPress Application Passwords and how to set them up.
+	 *
+	 * @param \WP $wp The WordPress environment instance.
+	 * @return void
+	 */
+	public function handle_well_known_request( \WP $wp ): void {
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$request_uri = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+		$path        = wp_parse_url( $request_uri, PHP_URL_PATH );
+
+		if ( '/.well-known/oauth-protected-resource' !== $path ) {
+			return;
+		}
+
+		$resource_url = rest_url( self::API_NAMESPACE . '/mcp' );
+		$settings_url = admin_url( 'options-general.php?page=bricks-mcp' );
+
+		$metadata = [
+			'resource'                 => $resource_url,
+			'authorization_servers'    => [],
+			'bearer_methods_supported' => [ 'header' ],
+			'resource_documentation'   => 'https://aiforbricks.com/docs/authentication',
+			'bricks_mcp_auth_method'   => 'application_password',
+			'bricks_mcp_auth_hint'     => sprintf(
+				/* translators: 1: settings URL */
+				__( 'Bricks MCP uses WordPress Application Passwords for authentication. Generate one at: %1$s. Then configure your MCP client with Basic auth: username + application password.', 'bricks-mcp' ),
+				$settings_url
+			),
+			'bricks_mcp_settings_url'  => $settings_url,
+		];
+
+		header( 'Content-Type: application/json' );
+		header( 'Access-Control-Allow-Origin: *' );
+		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		echo wp_json_encode( $metadata );
+		exit;
 	}
 
 	/**
@@ -129,6 +178,47 @@ final class Server {
 		$this->handler->emit_parse_error_and_exit();
 
 		// Unreachable, but satisfies return type.
+		return $response;
+	}
+
+	/**
+	 * Add WWW-Authenticate header to 401 responses from the /mcp route.
+	 *
+	 * When a MCP client receives a 401, the MCP 2025 auth spec requires the
+	 * response to include a WWW-Authenticate header with a resource_metadata
+	 * parameter pointing to the OAuth Protected Resource Metadata endpoint
+	 * (RFC 9728). Without this header, clients fall back to guessing the
+	 * well-known URL — and may still get a WordPress 404 HTML page.
+	 *
+	 * By returning this header we comply with RFC 9728 §5.1 and give clients
+	 * a machine-readable pointer to our JSON metadata document.
+	 *
+	 * @param \WP_REST_Response $response The REST response.
+	 * @param \WP_REST_Server   $server   The REST server.
+	 * @param \WP_REST_Request  $request  The REST request.
+	 * @return \WP_REST_Response The (potentially modified) response.
+	 */
+	public function add_www_authenticate_header(
+		\WP_REST_Response $response,
+		\WP_REST_Server $server, // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed
+		\WP_REST_Request $request
+	): \WP_REST_Response {
+		// Only act on 401 responses from our /mcp route.
+		if ( 401 !== $response->get_status() ) {
+			return $response;
+		}
+
+		$route = $request->get_route();
+		if ( ! str_starts_with( $route, '/' . self::API_NAMESPACE . '/mcp' ) ) {
+			return $response;
+		}
+
+		$metadata_url = site_url( '/.well-known/oauth-protected-resource' );
+		$response->header(
+			'WWW-Authenticate',
+			'Bearer resource_metadata="' . esc_url_raw( $metadata_url ) . '"'
+		);
+
 		return $response;
 	}
 
@@ -171,10 +261,11 @@ final class Server {
 		}
 
 		// Rate limit all requests (authenticated by user ID, anonymous by IP).
-		$identifier = is_user_logged_in()
+		$remote_addr = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : 'unknown';
+		$identifier  = is_user_logged_in()
 			? 'user_' . get_current_user_id()
-			: 'ip_' . ( $_SERVER['REMOTE_ADDR'] ?? 'unknown' );
-		$rate_check = RateLimiter::check( $identifier );
+			: 'ip_' . $remote_addr;
+		$rate_check  = RateLimiter::check( $identifier );
 		if ( is_wp_error( $rate_check ) ) {
 			return $rate_check;
 		}
