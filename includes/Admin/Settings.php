@@ -675,6 +675,12 @@ final class Settings {
 
 			var diagnosticsData = null;
 
+			function escHtml(s) {
+				var d = document.createElement('div');
+				d.appendChild(document.createTextNode(s));
+				return d.innerHTML;
+			}
+
 			document.getElementById('bricks-mcp-run-diagnostics').addEventListener('click', function() {
 				var btn      = this;
 				var spinner  = document.getElementById('bricks-mcp-diagnostics-spinner');
@@ -697,12 +703,12 @@ final class Settings {
 						spinner.classList.remove('is-active');
 
 						if (!response.success) {
-							results.innerHTML = '<p style="color:#d63638;">' + (response.data && response.data.message ? response.data.message : '<?php echo esc_js( __( 'An error occurred.', 'bricks-mcp' ) ); ?>') + '</p>';
+							results.innerHTML = '<p style="color:#d63638;">' + (response.data && response.data.message ? escHtml(response.data.message) : '<?php echo esc_js( __( 'An error occurred.', 'bricks-mcp' ) ); ?>') + '</p>';
 							return;
 						}
 
 						diagnosticsData = response.data;
-						var html = '<p class="bricks-mcp-diagnostics-summary"><strong>' + response.data.summary + '</strong></p>';
+						var html = '<p class="bricks-mcp-diagnostics-summary"><strong>' + escHtml(response.data.summary) + '</strong></p>';
 
 						response.data.checks.forEach(function(check) {
 							var icon = iconMap[check.status] || 'dashicons-minus';
@@ -710,15 +716,15 @@ final class Settings {
 							if (check.fix_steps && check.fix_steps.length > 0) {
 								fixHtml = '<div class="bricks-mcp-check-fixes"><strong><?php echo esc_js( __( 'How to fix:', 'bricks-mcp' ) ); ?></strong><ul>';
 								check.fix_steps.forEach(function(step) {
-									fixHtml += '<li>' + step + '</li>';
+									fixHtml += '<li>' + escHtml(step) + '</li>';
 								});
 								fixHtml += '</ul></div>';
 							}
 							html += '<div class="bricks-mcp-check bricks-mcp-check--' + check.status + '">';
 							html += '<span class="dashicons ' + icon + '"></span>';
 							html += '<div class="bricks-mcp-check-content">';
-							html += '<strong>' + check.label + '</strong>';
-							html += '<p>' + check.message + '</p>';
+							html += '<strong>' + escHtml(check.label) + '</strong>';
+							html += '<p>' + escHtml(check.message) + '</p>';
 							html += fixHtml;
 							html += '</div></div>';
 						});
