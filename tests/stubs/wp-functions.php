@@ -191,6 +191,84 @@ if ( ! function_exists( 'wp_json_encode' ) ) {
 	}
 }
 
+if ( ! function_exists( 'did_action' ) ) {
+	function did_action( string $hook_name ): int {
+		return 0;
+	}
+}
+
+if ( ! function_exists( 'add_action' ) ) {
+	function add_action( string $hook_name, callable $callback, int $priority = 10, int $accepted_args = 1 ): bool {
+		return true;
+	}
+}
+
+if ( ! function_exists( 'sanitize_text_field' ) ) {
+	function sanitize_text_field( string $str ): string {
+		return trim( strip_tags( $str ) );
+	}
+}
+
+if ( ! function_exists( 'absint' ) ) {
+	function absint( mixed $maybeint ): int {
+		return abs( (int) $maybeint );
+	}
+}
+
+if ( ! function_exists( 'wp_parse_args' ) ) {
+	function wp_parse_args( array|string $args, array $defaults = [] ): array {
+		if ( is_string( $args ) ) {
+			parse_str( $args, $args );
+		}
+		return array_merge( $defaults, $args );
+	}
+}
+
+if ( ! function_exists( 'get_posts' ) ) {
+	function get_posts( array $args = [] ): array {
+		$GLOBALS['_bricks_mcp_test_last_get_posts_args'] = $args;
+		return $GLOBALS['_bricks_mcp_test_get_posts_return'] ?? [];
+	}
+}
+
+if ( ! function_exists( 'update_postmeta_cache' ) ) {
+	function update_postmeta_cache( array $post_ids ): void {
+		// No-op in tests.
+	}
+}
+
+if ( ! function_exists( 'wp_list_pluck' ) ) {
+	function wp_list_pluck( array $input_list, string $field ): array {
+		$output = [];
+		foreach ( $input_list as $item ) {
+			if ( is_object( $item ) ) {
+				$output[] = $item->$field ?? null;
+			} elseif ( is_array( $item ) ) {
+				$output[] = $item[ $field ] ?? null;
+			}
+		}
+		return $output;
+	}
+}
+
+if ( ! function_exists( 'get_permalink' ) ) {
+	function get_permalink( int $post_id ): string {
+		return 'https://example.com/?p=' . $post_id;
+	}
+}
+
+if ( ! function_exists( 'get_the_post_thumbnail_url' ) ) {
+	function get_the_post_thumbnail_url( int $post_id, string $size = 'thumbnail' ): string|false {
+		return false;
+	}
+}
+
+if ( ! function_exists( 'current_user_can' ) ) {
+	function current_user_can( string $capability ): bool {
+		return $GLOBALS['_bricks_mcp_test_current_user_can'] ?? true;
+	}
+}
+
 // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedClassFound
 if ( ! class_exists( 'WP_REST_Request' ) ) {
 	/**

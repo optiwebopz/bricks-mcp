@@ -372,20 +372,22 @@ final class Router {
 	 * @return array<int, array<string, mixed>> Posts list.
 	 */
 	private function tool_get_posts( array $args ): array {
-		$defaults = array(
-			'post_type'      => 'post',
-			'posts_per_page' => 10,
-			'orderby'        => 'date',
-			'order'          => 'DESC',
+		$order = isset( $args['order'] ) && 'ASC' === strtoupper( (string) $args['order'] ) ? 'ASC' : 'DESC';
+
+		$query_args = array(
+			'post_type'      => isset( $args['post_type'] ) ? sanitize_text_field( (string) $args['post_type'] ) : 'post',
+			'posts_per_page' => isset( $args['posts_per_page'] ) ? min( absint( $args['posts_per_page'] ), 100 ) : 10,
+			'orderby'        => isset( $args['orderby'] ) ? sanitize_text_field( (string) $args['orderby'] ) : 'date',
+			'order'          => $order,
 			'post_status'    => 'publish',
+			's'              => isset( $args['s'] ) ? sanitize_text_field( (string) $args['s'] ) : '',
+			'paged'          => isset( $args['paged'] ) ? absint( $args['paged'] ) : 1,
+			'category_name'  => isset( $args['category_name'] ) ? sanitize_text_field( (string) $args['category_name'] ) : '',
+			'tag'            => isset( $args['tag'] ) ? sanitize_text_field( (string) $args['tag'] ) : '',
+			'author'         => isset( $args['author'] ) ? absint( $args['author'] ) : 0,
 		);
 
-		$query_args = wp_parse_args( $args, $defaults );
-
-		// Limit posts per page to prevent abuse.
-		$query_args['posts_per_page'] = min( (int) $query_args['posts_per_page'], 100 );
-
-		$posts  = get_posts( $query_args );
+		$posts = get_posts( $query_args );
 
 		// Prime meta cache (includes thumbnail IDs) to avoid N+1 queries for get_the_post_thumbnail_url().
 		update_postmeta_cache( wp_list_pluck( $posts, 'ID' ) );
