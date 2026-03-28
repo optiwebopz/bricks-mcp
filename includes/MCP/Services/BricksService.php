@@ -7375,11 +7375,20 @@ class BricksService {
 	/**
 	 * Set page custom CSS.
 	 *
+	 * Requires dangerous_actions toggle to be enabled.
+	 *
 	 * @param int    $post_id Post ID.
 	 * @param string $css     Custom CSS code. Empty string removes CSS.
 	 * @return array<string, mixed>|\WP_Error Update result or error.
 	 */
 	public function update_page_css( int $post_id, string $css ): array|\WP_Error {
+		if ( ! $this->is_dangerous_actions_enabled() ) {
+			return new \WP_Error(
+				'dangerous_actions_disabled',
+				__( 'Custom CSS requires the Dangerous Actions toggle to be enabled in Bricks MCP settings. This is a security measure to prevent code injection.', 'bricks-mcp' )
+			);
+		}
+
 		$post = get_post( $post_id );
 
 		if ( ! $post ) {
