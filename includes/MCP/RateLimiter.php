@@ -42,19 +42,19 @@ final class RateLimiter {
 	private const WINDOW = 60;
 
 	/**
-	 * Check whether the given user is within the rate limit.
+	 * Check whether the given identifier is within the rate limit.
 	 *
 	 * Uses wp_cache_add to atomically initialize the counter only when it does
 	 * not exist, then wp_cache_incr to atomically increment. On Redis/Memcached
 	 * backends both operations are atomic, eliminating the race condition.
 	 *
-	 * @param int $user_id The authenticated user ID to check.
+	 * @param string $identifier The rate limit identifier (e.g. 'user_42' or 'ip_1.2.3.4').
 	 * @return true|\WP_Error True if within limit, WP_Error with status 429 if exceeded.
 	 */
-	public static function check( int $user_id ): true|\WP_Error {
+	public static function check( string $identifier ): true|\WP_Error {
 		$settings = get_option( 'bricks_mcp_settings', [] );
 		$limit    = (int) ( $settings['rate_limit_rpm'] ?? 120 );
-		$key      = 'rl_' . $user_id;
+		$key      = 'rl_' . $identifier;
 
 		// Initialize counter only if it does not already exist (atomic on persistent cache).
 		wp_cache_add( $key, 0, self::CACHE_GROUP, self::WINDOW );
