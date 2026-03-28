@@ -17,6 +17,9 @@ define( 'BRICKS_MCP_PLUGIN_DIR', dirname( __DIR__ ) . '/' );
 define( 'BRICKS_MCP_PLUGIN_URL', 'http://localhost/wp-content/plugins/bricks-mcp/' );
 define( 'BRICKS_MCP_PLUGIN_BASENAME', 'bricks-mcp/bricks-mcp.php' );
 
+// Load global-namespace WordPress function stubs.
+require_once __DIR__ . '/stubs/wp-functions.php';
+
 // Load the autoloader.
 require_once BRICKS_MCP_PLUGIN_DIR . 'includes/Autoloader.php';
 BricksMCP\Autoloader::register();

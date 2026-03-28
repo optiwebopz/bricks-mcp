@@ -13,45 +13,8 @@ namespace BricksMCP\Tests\Unit\Admin;
 use PHPUnit\Framework\TestCase;
 use BricksMCP\Admin\DiagnosticRunner;
 
-// WordPress function stubs for unit tests.
-if ( ! function_exists( '__' ) ) {
-	/**
-	 * Stub for WordPress translation function.
-	 *
-	 * @param string $text   Text to translate.
-	 * @param string $domain Text domain (unused in tests).
-	 * @return string
-	 */
-	function __( string $text, string $domain = '' ): string { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
-		return $text;
-	}
-}
-
-if ( ! function_exists( 'esc_html' ) ) {
-	/**
-	 * Stub for WordPress esc_html function.
-	 *
-	 * @param string $text Text to escape.
-	 * @return string
-	 */
-	function esc_html( string $text ): string { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
-		return $text;
-	}
-}
-
-if ( ! function_exists( 'apply_filters' ) ) {
-	/**
-	 * Stub for WordPress apply_filters function.
-	 *
-	 * @param string $tag   Filter tag (unused in tests).
-	 * @param mixed  $value Value to filter.
-	 * @param mixed  ...$args Additional arguments (unused in tests).
-	 * @return mixed
-	 */
-	function apply_filters( string $tag, mixed $value, mixed ...$args ): mixed { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
-		return $value;
-	}
-}
+// WordPress function stubs are provided by tests/stubs/wp-functions.php
+// (loaded via bootstrap-simple.php) in the global namespace.
 
 /**
  * Fake check implementation for testing.
