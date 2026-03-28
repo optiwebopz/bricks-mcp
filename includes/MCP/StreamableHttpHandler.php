@@ -66,6 +66,13 @@ final class StreamableHttpHandler {
 	public const INTERNAL_ERROR = -32603;
 
 	/**
+	 * Maximum number of messages allowed in a JSON-RPC batch request.
+	 *
+	 * @var int
+	 */
+	public const MAX_BATCH_SIZE = 20;
+
+	/**
 	 * Router instance.
 	 *
 	 * @var Router
@@ -117,6 +124,15 @@ final class StreamableHttpHandler {
 
 		// Detect batch vs single message.
 		if ( is_array( $decoded ) && array_is_list( $decoded ) ) {
+			// Reject oversized batches.
+			if ( count( $decoded ) > self::MAX_BATCH_SIZE ) {
+				$this->emit_sse_headers();
+				$this->emit_sse_event(
+					$this->jsonrpc_error( null, self::INVALID_REQUEST, 'Batch too large (max 20 messages)' )
+				);
+				exit;
+			}
+
 			// Batch request — initialize must not be batched.
 			foreach ( $decoded as $message ) {
 				if ( is_array( $message ) && isset( $message['method'] ) && 'initialize' === $message['method'] ) {

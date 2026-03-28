@@ -14,6 +14,16 @@
 // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedClassFound
 
 // ---------------------------------------------------------------------------
+// WordPress time constants.
+// ---------------------------------------------------------------------------
+if ( ! defined( 'DAY_IN_SECONDS' ) ) {
+	define( 'DAY_IN_SECONDS', 86400 );
+}
+if ( ! defined( 'HOUR_IN_SECONDS' ) ) {
+	define( 'HOUR_IN_SECONDS', 3600 );
+}
+
+// ---------------------------------------------------------------------------
 // Controllable globals — tests set these in setUp() to drive stub behavior.
 // ---------------------------------------------------------------------------
 $GLOBALS['_bricks_mcp_test_cache']            = [];
@@ -169,4 +179,44 @@ if ( ! function_exists( 'apply_filters' ) ) {
 	}
 }
 
+if ( ! function_exists( 'status_header' ) ) {
+	function status_header( int $code ): void {
+		// No-op in tests.
+	}
+}
+
+if ( ! function_exists( 'wp_json_encode' ) ) {
+	function wp_json_encode( mixed $data, int $flags = 0, int $depth = 512 ): string|false {
+		return json_encode( $data, $flags, $depth );
+	}
+}
+
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedClassFound
+if ( ! class_exists( 'WP_REST_Request' ) ) {
+	/**
+	 * Minimal WP_REST_Request stub.
+	 */
+	class WP_REST_Request {
+		/** @var array<string, string> */
+		private array $headers = [];
+		/** @var string */
+		private string $body = '';
+
+		public function get_header( string $name ): ?string {
+			return $this->headers[ strtolower( $name ) ] ?? null;
+		}
+
+		public function set_header( string $name, string $value ): void {
+			$this->headers[ strtolower( $name ) ] = $value;
+		}
+
+		public function get_body(): string {
+			return $this->body;
+		}
+
+		public function set_body( string $body ): void {
+			$this->body = $body;
+		}
+	}
+}
 // phpcs:enable
