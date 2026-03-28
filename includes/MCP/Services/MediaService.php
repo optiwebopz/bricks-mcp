@@ -204,16 +204,20 @@ class MediaService {
 		}
 
 		// Fire Unsplash download tracking (required by API guidelines).
+		// Validate domain to prevent API key leakage to attacker-controlled URLs.
 		if ( null !== $download_location && '' !== $download_location ) {
-			$api_key = $this->get_unsplash_api_key();
-			if ( '' !== $api_key ) {
-				wp_remote_get(
-					$download_location,
-					array(
-						'headers'  => array( 'Authorization' => 'Client-ID ' . $api_key ),
-						'blocking' => false,
-					)
-				);
+			$dl_host = wp_parse_url( $download_location, PHP_URL_HOST );
+			if ( 'api.unsplash.com' === $dl_host ) {
+				$api_key = $this->get_unsplash_api_key();
+				if ( '' !== $api_key ) {
+					wp_remote_get(
+						$download_location,
+						array(
+							'headers'  => array( 'Authorization' => 'Client-ID ' . $api_key ),
+							'blocking' => false,
+						)
+					);
+				}
 			}
 		}
 

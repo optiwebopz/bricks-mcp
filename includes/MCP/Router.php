@@ -361,7 +361,6 @@ final class Router {
 			'name'        => get_bloginfo( 'name' ),
 			'description' => get_bloginfo( 'description' ),
 			'url'         => get_bloginfo( 'url' ),
-			'admin_email' => get_bloginfo( 'admin_email' ),
 			'language'    => get_bloginfo( 'language' ),
 			'version'     => get_bloginfo( 'version' ),
 			'charset'     => get_bloginfo( 'charset' ),

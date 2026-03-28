@@ -360,7 +360,7 @@ final class StreamableHttpHandler {
 		if ( $status >= 400 || ( is_array( $data ) && ! empty( $data['error'] ) ) ) {
 			$error_text = '';
 			if ( is_array( $data ) && isset( $data['content'][0]['text'] ) ) {
-				$error_text = $data['content'][0]['text'];
+				$error_text = wp_strip_all_tags( $data['content'][0]['text'] );
 			}
 
 			return $this->jsonrpc_error(

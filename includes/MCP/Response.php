@@ -91,7 +91,15 @@ final class Response {
 
 		$data = $error->get_error_data();
 		if ( null !== $data ) {
-			$payload['data'] = $data;
+			if ( is_scalar( $data ) ) {
+				$payload['data'] = $data;
+			} elseif ( is_array( $data ) ) {
+				// Only include safe scalar values from error data arrays.
+				$payload['data'] = array_filter(
+					$data,
+					fn( $v ) => is_scalar( $v ) || is_null( $v )
+				);
+			}
 		}
 
 		return self::success(

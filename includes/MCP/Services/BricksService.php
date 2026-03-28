@@ -1147,7 +1147,7 @@ class BricksService {
 			'id'     => $new_id,
 			'name'   => $name,
 			'color'  => isset( $args['color'] ) ? sanitize_text_field( $args['color'] ) : '#686868',
-			'styles' => $args['styles'] ?? [],
+			'styles' => $this->sanitize_styles_array( $args['styles'] ?? [] ),
 		];
 
 		if ( ! empty( $args['category'] ) ) {
@@ -1210,10 +1210,11 @@ class BricksService {
 			}
 
 			if ( isset( $args['styles'] ) ) {
+				$sanitized_styles = $this->sanitize_styles_array( $args['styles'] );
 				if ( ! empty( $args['replace_styles'] ) ) {
-					$class['styles'] = $args['styles'];
+					$class['styles'] = $sanitized_styles;
 				} else {
-					$class['styles'] = array_merge( $class['styles'] ?? [], $args['styles'] );
+					$class['styles'] = array_merge( $class['styles'] ?? [], $sanitized_styles );
 				}
 			}
 
@@ -1233,6 +1234,30 @@ class BricksService {
 				$class_id
 			)
 		);
+	}
+
+	/**
+	 * Recursively sanitize a styles array for global classes.
+	 *
+	 * Walks the nested styles structure and sanitizes all scalar values
+	 * to prevent stored XSS or injection via crafted style properties.
+	 *
+	 * @param array<string, mixed> $styles The styles array to sanitize.
+	 * @return array<string, mixed> Sanitized styles array.
+	 */
+	private function sanitize_styles_array( array $styles ): array {
+		$sanitized = [];
+		foreach ( $styles as $key => $value ) {
+			$safe_key = sanitize_text_field( (string) $key );
+			if ( is_array( $value ) ) {
+				$sanitized[ $safe_key ] = $this->sanitize_styles_array( $value );
+			} elseif ( is_string( $value ) ) {
+				$sanitized[ $safe_key ] = sanitize_text_field( $value );
+			} elseif ( is_int( $value ) || is_float( $value ) || is_bool( $value ) ) {
+				$sanitized[ $safe_key ] = $value;
+			}
+		}
+		return $sanitized;
 	}
 
 	/**
@@ -6973,9 +6998,22 @@ class BricksService {
 			update_post_meta( $template_id, $page_settings_key, $page_settings );
 		}
 
-		// Save template settings if provided.
+		// Save template settings if provided (allowlisted keys only).
 		if ( ! empty( $data['templateSettings'] ) && is_array( $data['templateSettings'] ) ) {
-			update_post_meta( $template_id, '_bricks_template_settings', $data['templateSettings'] );
+			$allowed_template_keys = array(
+				'templateConditions',
+				'headerPosition',
+				'headerSticky',
+				'templateOrder',
+				'templateIncludeChildren',
+			);
+			$safe_settings         = array_intersect_key(
+				$data['templateSettings'],
+				array_flip( $allowed_template_keys )
+			);
+			if ( ! empty( $safe_settings ) ) {
+				update_post_meta( $template_id, '_bricks_template_settings', $safe_settings );
+			}
 		}
 
 		// Merge global classes if present.
