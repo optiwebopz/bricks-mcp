@@ -115,26 +115,51 @@ final class Server {
 		$request_uri = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
 		$path        = wp_parse_url( $request_uri, PHP_URL_PATH );
 
-		if ( '/.well-known/oauth-protected-resource' !== $path ) {
+		$well_known_paths = [
+			'/.well-known/oauth-protected-resource',
+			'/.well-known/oauth-authorization-server',
+		];
+
+		if ( ! in_array( $path, $well_known_paths, true ) ) {
 			return;
 		}
 
 		$resource_url = rest_url( self::API_NAMESPACE . '/mcp' );
 		$settings_url = admin_url( 'options-general.php?page=bricks-mcp' );
 
-		$metadata = [
-			'resource'                 => $resource_url,
-			'authorization_servers'    => [],
-			'bearer_methods_supported' => [ 'header' ],
-			'resource_documentation'   => 'https://aiforbricks.com/docs/authentication',
-			'bricks_mcp_auth_method'   => 'application_password',
-			'bricks_mcp_auth_hint'     => sprintf(
-				/* translators: 1: settings URL */
-				__( 'Bricks MCP uses WordPress Application Passwords for authentication. Generate one at: %1$s. Then configure your MCP client with Basic auth: username + application password.', 'bricks-mcp' ),
-				$settings_url
-			),
-			'bricks_mcp_settings_url'  => $settings_url,
-		];
+		// For oauth-protected-resource: RFC 9728 metadata.
+		// For oauth-authorization-server: explain we don't use OAuth.
+		// Both return JSON so MCP clients never see a WordPress HTML 404.
+		if ( '/.well-known/oauth-authorization-server' === $path ) {
+			$metadata = [
+				'issuer'                   => site_url( '/' ),
+				'authorization_endpoint'   => '',
+				'token_endpoint'           => '',
+				'response_types_supported' => [],
+				'bricks_mcp_error'         => 'oauth_not_supported',
+				'bricks_mcp_auth_method'   => 'application_password',
+				'bricks_mcp_auth_hint'     => sprintf(
+					/* translators: 1: settings URL */
+					__( 'This server does not support OAuth. Bricks MCP uses WordPress Application Passwords. Generate one at Users > Profile > Application Passwords, then use Basic auth (base64 of "username:app-password") in your MCP client. Settings: %1$s', 'bricks-mcp' ),
+					$settings_url
+				),
+				'bricks_mcp_settings_url'  => $settings_url,
+			];
+		} else {
+			$metadata = [
+				'resource'                 => $resource_url,
+				'authorization_servers'    => [],
+				'bearer_methods_supported' => [ 'header' ],
+				'resource_documentation'   => 'https://aiforbricks.com/docs/authentication',
+				'bricks_mcp_auth_method'   => 'application_password',
+				'bricks_mcp_auth_hint'     => sprintf(
+					/* translators: 1: settings URL */
+					__( 'Bricks MCP uses WordPress Application Passwords for authentication. Generate one at: %1$s. Then configure your MCP client with Basic auth: username + application password.', 'bricks-mcp' ),
+					$settings_url
+				),
+				'bricks_mcp_settings_url'  => $settings_url,
+			];
+		}
 
 		header( 'Content-Type: application/json' );
 		header( 'Access-Control-Allow-Origin: *' );
