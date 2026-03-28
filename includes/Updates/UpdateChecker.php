@@ -98,10 +98,10 @@ final class UpdateChecker {
 	/**
 	 * Check for plugin updates via the update_plugins_{$hostname} filter.
 	 *
-	 * @param mixed             $update      The update data. Default false.
+	 * @param mixed                $update      The update data. Default false.
 	 * @param array<string,string> $plugin_data Plugin header data.
-	 * @param string            $plugin_file Plugin file relative to plugins directory.
-	 * @param array<string>     $locales     Installed locales.
+	 * @param string               $plugin_file Plugin file relative to plugins directory.
+	 * @param array<string>        $locales     Installed locales.
 	 * @return mixed Update data array if update available, original value otherwise.
 	 */
 	public function check_update( $update, array $plugin_data, string $plugin_file, array $locales ) {
@@ -194,7 +194,7 @@ final class UpdateChecker {
 						);
 						if ( ! is_wp_error( $checksum_response ) && 200 === wp_remote_retrieve_response_code( $checksum_response ) ) {
 							// sha256sum format: "hexhash  filename" — extract only the 64-char hex hash.
-							$raw   = trim( wp_remote_retrieve_body( $checksum_response ) );
+							$raw    = trim( wp_remote_retrieve_body( $checksum_response ) );
 							$sha256 = substr( $raw, 0, 64 );
 						}
 					}
@@ -316,5 +316,4 @@ final class UpdateChecker {
 
 		wp_send_json_success( $data );
 	}
-
 }
