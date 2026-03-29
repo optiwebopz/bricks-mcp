@@ -1,5 +1,5 @@
 === Bricks MCP ===
-Contributors: cristianuibar
+Contributors: cristianuibar, optiwebopz
 Tags: ai, bricks builder, mcp, artificial intelligence, page builder
 Requires at least: 6.4
 Tested up to: 6.8
@@ -125,6 +125,7 @@ Yes, when configured correctly. The plugin enforces WordPress Application Passwo
 * New: Border control schema corrected — radius and width types changed from integer to string with CSS unit examples.
 * New: Typography schema extended with text-decoration, text-align, font-style enum values, and color field with correct color object schema.
 * Compatibility: Fully verified against Bricks Builder 2.3.1 on PHP 8.1+.
+* Props: @optiwebopz for the original contribution (PR #14).
 
 = 1.4.0 =
 * New: Connection diagnostics system — 9 automated checks detect what's blocking MCP API endpoints or App Passwords.
