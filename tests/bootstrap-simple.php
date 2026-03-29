@@ -10,7 +10,7 @@ declare(strict_types=1);
 
 // Define plugin constants for testing.
 define( 'ABSPATH', '/tmp/wordpress/' );
-define( 'BRICKS_MCP_VERSION', '1.3.0' );
+define( 'BRICKS_MCP_VERSION', '1.4.1' );
 define( 'BRICKS_MCP_MIN_PHP_VERSION', '8.2' );
 define( 'BRICKS_MCP_MIN_WP_VERSION', '6.4' );
 define( 'BRICKS_MCP_PLUGIN_DIR', dirname( __DIR__ ) . '/' );

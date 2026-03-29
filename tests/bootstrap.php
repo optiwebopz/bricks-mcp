@@ -9,7 +9,9 @@
 declare(strict_types=1);
 
 // Define testing constant.
-define( 'BRICKS_MCP_TESTING', true );
+if ( ! defined( 'BRICKS_MCP_TESTING' ) ) {
+	define( 'BRICKS_MCP_TESTING', true );
+}
 
 // Get the WordPress test suite directory.
 $_tests_dir = getenv( 'WP_TESTS_DIR' );
