@@ -61,8 +61,56 @@ if ( ! class_exists( 'WP_Error' ) ) {
 			return $this->code;
 		}
 
+		public function get_error_message( string $code = '' ): string {
+			return $this->message;
+		}
+
 		public function get_error_data( string $code = '' ): mixed {
 			return $this->data;
+		}
+	}
+}
+
+if ( ! class_exists( 'WP_REST_Response' ) ) {
+	/**
+	 * Minimal WP_REST_Response stub.
+	 */
+	class WP_REST_Response {
+		/** @var mixed */
+		protected mixed $data;
+
+		/** @var int */
+		protected int $status;
+
+		/** @var array<string, string> */
+		protected array $headers = [];
+
+		/**
+		 * @param mixed $data   Response data.
+		 * @param int   $status HTTP status code.
+		 */
+		public function __construct( mixed $data = null, int $status = 200 ) {
+			$this->data   = $data;
+			$this->status = $status;
+		}
+
+		public function get_data(): mixed {
+			return $this->data;
+		}
+
+		public function get_status(): int {
+			return $this->status;
+		}
+
+		public function header( string $key, string $value ): void {
+			$this->headers[ $key ] = $value;
+		}
+
+		/**
+		 * @return array<string, string>
+		 */
+		public function get_headers(): array {
+			return $this->headers;
 		}
 	}
 }

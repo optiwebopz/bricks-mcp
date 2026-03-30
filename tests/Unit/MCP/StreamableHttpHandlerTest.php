@@ -227,4 +227,28 @@ final class StreamableHttpHandlerTest extends TestCase {
 		$count  = substr_count( $source, 'Connection: close' );
 		$this->assertGreaterThanOrEqual( 2, $count, 'Expected Connection: close in both 413 and 415 blocks' );
 	}
+
+	/**
+	 * Test: dispatch_single() supports MCP resources and prompts methods.
+	 *
+	 * @return void
+	 */
+	public function test_dispatch_single_contains_resources_and_prompts_methods(): void {
+		$source = $this->get_method_source( 'dispatch_single' );
+		$this->assertStringContainsString( "'resources/list'", $source );
+		$this->assertStringContainsString( "'resources/read'", $source );
+		$this->assertStringContainsString( "'prompts/list'", $source );
+		$this->assertStringContainsString( "'prompts/get'", $source );
+	}
+
+	/**
+	 * Test: handle_initialize() advertises resources and prompts capabilities.
+	 *
+	 * @return void
+	 */
+	public function test_handle_initialize_contains_resources_and_prompts_capabilities(): void {
+		$source = $this->get_method_source( 'handle_initialize' );
+		$this->assertStringContainsString( "'resources' => new \\stdClass()", $source );
+		$this->assertStringContainsString( "'prompts'   => new \\stdClass()", $source );
+	}
 }

@@ -291,4 +291,110 @@ final class RouterTest extends TestCase {
 		// Only these 5 keys should exist.
 		$this->assertCount( 5, $captured );
 	}
+
+	/**
+	 * register_tool() accepts optional metadata and exposes it in tools/list.
+	 *
+	 * @return void
+	 */
+	public function test_register_tool_accepts_v2_metadata(): void {
+		$this->router->register_tool(
+			'test_tool',
+			'Test tool',
+			[ 'type' => 'object' ],
+			static fn (): array => [],
+			[ 'readOnlyHint' => true ],
+			[
+				'type'                 => 'object',
+				'additionalProperties' => true,
+			],
+			[ 'limit' => 10 ]
+		);
+
+		$ref      = new \ReflectionProperty( $this->router, 'tools' );
+		$ref->setAccessible( true );
+		$registry = $ref->getValue( $this->router );
+		$tool     = $registry['test_tool'] ?? null;
+
+		$this->assertNotNull( $tool );
+		$this->assertSame( [ 'readOnlyHint' => true ], $tool['annotations'] );
+		$this->assertSame(
+			[
+				'type'                 => 'object',
+				'additionalProperties' => true,
+			],
+			$tool['outputSchema']
+		);
+		$this->assertSame( [ 'limit' => 10 ], $tool['defaults'] );
+	}
+
+	/**
+	 * register_tool() auto-populates metadata and response_format for consolidated tools.
+	 *
+	 * @return void
+	 */
+	public function test_register_tool_autopopulates_v2_metadata_when_omitted(): void {
+		$this->router->register_tool(
+			'legacy_tool',
+			'Legacy tool',
+			[ 'type' => 'object' ],
+			static fn (): array => []
+		);
+
+		$ref      = new \ReflectionProperty( $this->router, 'tools' );
+		$ref->setAccessible( true );
+		$registry = $ref->getValue( $this->router );
+		$tool     = $registry['legacy_tool'] ?? null;
+
+		$this->assertNotNull( $tool );
+		$this->assertArrayHasKey( 'annotations', $tool );
+		$this->assertArrayHasKey( 'outputSchema', $tool );
+		$this->assertArrayNotHasKey( 'defaults', $tool );
+		$this->assertArrayHasKey( 'response_format', $tool['inputSchema']['properties'] );
+	}
+
+	/**
+	 * tools/list exposes the canonical content tool and hides the legacy wordpress tool.
+	 *
+	 * @return void
+	 */
+	public function test_available_tools_prefer_canonical_content_tool(): void {
+		$names = array_column( $this->router->get_available_tools(), 'name' );
+
+		$this->assertContains( 'content', $names );
+		$this->assertContains( 'get_site_info', $names );
+		$this->assertNotContains( 'wordpress', $names );
+	}
+
+	/**
+	 * The v2 visible tool surface is intentionally capped at 11 canonical tools.
+	 *
+	 * @return void
+	 */
+	public function test_visible_tool_surface_count_is_11(): void {
+		$ref   = new \ReflectionClass( Router::class );
+		$names = $ref->getConstant( 'VISIBLE_TOOL_NAMES' );
+
+		$this->assertCount( 11, $names );
+		$this->assertSame( 'content', $names[3] );
+		$this->assertSame( 'design', $names[5] );
+	}
+
+	/**
+	 * Legacy tool names resolve to canonical aliases with injected actions.
+	 *
+	 * @return void
+	 */
+	public function test_legacy_aliases_resolve_to_canonical_tools(): void {
+		$method = new \ReflectionMethod( $this->router, 'resolve_tool_call' );
+		$method->setAccessible( true );
+
+		$get_posts = $method->invoke( $this->router, 'get_posts', [] );
+		$page_list = $method->invoke( $this->router, 'list_pages', [] );
+
+		$this->assertSame( 'content', $get_posts['name'] );
+		$this->assertSame( 'get_posts', $get_posts['arguments']['action'] );
+		$this->assertSame( 'content', $page_list['name'] );
+		$this->assertSame( 'list', $page_list['arguments']['action'] );
+	}
 }

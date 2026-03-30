@@ -65,6 +65,24 @@ final class ResponseTest extends TestCase {
 	}
 
 	/**
+	 * Test that error guidance is included only when provided.
+	 *
+	 * @return void
+	 */
+	public function test_error_response_includes_guidance_when_present(): void {
+		$response = \BricksMCP\MCP\Response::error(
+			'test_error',
+			'Test error message',
+			400,
+			null,
+			'Retry with a valid tool name.'
+		);
+
+		$data = $response->get_data();
+		$this->assertSame( 'Retry with a valid tool name.', $data['details']['guidance'] );
+	}
+
+	/**
 	 * Test that tool error response is created correctly with data.
 	 *
 	 * @return void
@@ -105,5 +123,19 @@ final class ResponseTest extends TestCase {
 		$this->assertEquals( 'no_data_code', $payload['code'] );
 		$this->assertEquals( 'Error without data', $payload['message'] );
 		$this->assertArrayNotHasKey( 'data', $payload );
+	}
+
+	/**
+	 * Test that tool error guidance is included only when provided.
+	 *
+	 * @return void
+	 */
+	public function test_tool_error_response_includes_guidance_when_present(): void {
+		$error    = new \WP_Error( 'guided_code', 'Guided error' );
+		$response = \BricksMCP\MCP\Response::tool_error( $error, 'Check the schema and retry.' );
+
+		$data    = $response->get_data();
+		$payload = json_decode( $data['content'][0]['text'], true );
+		$this->assertSame( 'Check the schema and retry.', $payload['guidance'] );
 	}
 }

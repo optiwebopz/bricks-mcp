@@ -6,18 +6,18 @@ AI-powered assistant for [Bricks Builder](https://bricksbuilder.io/). Control yo
 
 ## What It Does
 
-Bricks MCP is a WordPress plugin that implements an [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server, letting AI assistants read and write your Bricks Builder site. Connect Claude, Gemini, or any MCP-compatible client and manage pages, templates, global classes, theme styles, WooCommerce layouts, and more — all through natural language.
+Bricks MCP is a WordPress plugin that implements an [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server, letting AI assistants read and write your Bricks Builder site. Connect Claude Code, Claude Desktop, Cursor, or any compatible MCP client and manage pages, templates, global classes, theme styles, WooCommerce layouts, and more through natural language.
 
 ## Features
 
-- 20+ MCP tools covering the full Bricks Builder data model
+- 11 canonical MCP tools covering the full Bricks Builder data model
 - Read and write pages, templates, elements, and global settings
 - WooCommerce support (product pages, cart, checkout, account templates)
 - Global classes, theme styles, typography scales, color palettes, variables
 - Media library management with Unsplash integration
 - WordPress menus, fonts, and custom code management
 - Built-in connection tester and config snippet generator
-- Works with Claude Code, Claude Desktop, Gemini, and any MCP client
+- Works with Claude Code, Claude Desktop, Cursor, and other compatible MCP clients
 
 ## Requirements
 
@@ -46,7 +46,7 @@ If you run LocalWP or a custom server stack, PHP and Nginx may need configuratio
 claude mcp add bricks-mcp https://yoursite.com/wp-json/bricks-mcp/v1/mcp --transport http
 ```
 
-### Claude Desktop / Other MCP Clients
+### Claude Desktop / Cursor / Other MCP Clients
 
 Add to your MCP config (`.mcp.json` or equivalent):
 
@@ -66,29 +66,22 @@ Add to your MCP config (`.mcp.json` or equivalent):
 
 Authentication uses WordPress [Application Passwords](https://make.wordpress.org/core/2020/11/05/application-passwords-integration-guide/) (Users > Profile > Application Passwords).
 
+ChatGPT is not currently supported as an MCP client for this plugin. ChatGPT's MCP flow requires OAuth 2.1 and dynamic client registration, while Bricks MCP uses WordPress Application Passwords for authentication.
+
 ## Available Tools
 
 | Tool | Description |
 |------|-------------|
-| `get_site_info` | WordPress site information and configuration |
-| `wordpress` | Manage posts, pages, users, plugins, comments, taxonomies |
-| `get_builder_guide` | Bricks Builder documentation for AI context |
-| `bricks` | Read/write Bricks settings, query loops, interactions |
-| `page` | Create, read, update, delete Bricks pages and elements |
-| `element` | Fine-grained element operations (add, move, style, clone) |
-| `template` | Manage Bricks templates (header, footer, section, etc.) |
-| `template_condition` | Set display conditions on templates |
-| `template_taxonomy` | Manage template taxonomy terms |
-| `global_class` | Create and manage global CSS classes |
-| `theme_style` | Create and manage theme styles |
-| `typography_scale` | Typography scale presets |
-| `color_palette` | Color palette management |
-| `global_variable` | Global CSS variables |
+| `get_site_info` | Read WordPress site details and run connection diagnostics |
+| `get_builder_guide` | Read the Bricks builder guide before editing content |
+| `bricks` | Manage Bricks builder settings, schema, queries, and references |
+| `content` | Manage WordPress and Bricks content across posts, pages, and elements |
+| `template` | Manage Bricks templates, conditions, and template taxonomies |
+| `design` | Manage Bricks design tokens across classes, styles, palettes, variables, and fonts |
 | `media` | Upload media, search Unsplash, manage library |
 | `menu` | WordPress menu management |
 | `component` | Bricks component (reusable element) management |
 | `woocommerce` | WooCommerce page templates and product layouts |
-| `font` | Custom font management |
 | `code` | Page-level CSS and JavaScript |
 
 ## Try It Out

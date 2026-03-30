@@ -87,12 +87,28 @@ final class StreamableHttpHandler {
 	private Router $router;
 
 	/**
+	 * Resource registry.
+	 *
+	 * @var ResourceRegistry
+	 */
+	private ResourceRegistry $resource_registry;
+
+	/**
+	 * Prompt registry.
+	 *
+	 * @var PromptRegistry
+	 */
+	private PromptRegistry $prompt_registry;
+
+	/**
 	 * Constructor.
 	 *
 	 * @param Router $router The MCP router instance.
 	 */
 	public function __construct( Router $router ) {
-		$this->router = $router;
+		$this->router            = $router;
+		$this->resource_registry = new ResourceRegistry( $router->get_bricks_service() );
+		$this->prompt_registry   = new PromptRegistry();
 	}
 
 	/**
@@ -280,6 +296,10 @@ final class StreamableHttpHandler {
 			'notifications/initialized' => null,
 			'tools/list'              => $this->handle_tools_list( $id, is_array( $params ) ? $params : [] ),
 			'tools/call'              => $this->handle_tools_call( $id, is_array( $params ) ? $params : [] ),
+			'resources/list'          => $this->handle_resources_list( $id, is_array( $params ) ? $params : [] ),
+			'resources/read'          => $this->handle_resources_read( $id, is_array( $params ) ? $params : [] ),
+			'prompts/list'            => $this->handle_prompts_list( $id, is_array( $params ) ? $params : [] ),
+			'prompts/get'             => $this->handle_prompts_get( $id, is_array( $params ) ? $params : [] ),
 			'ping'                    => $this->jsonrpc_success( $id, [] ),
 			default                   => $this->jsonrpc_error( $id, self::METHOD_NOT_FOUND, 'Method not found' ),
 		};
@@ -313,6 +333,8 @@ final class StreamableHttpHandler {
 			'tools' => [
 				'listChanged' => true,
 			],
+			'resources' => new \stdClass(),
+			'prompts'   => new \stdClass(),
 		];
 
 		$server_info = [
@@ -388,6 +410,85 @@ final class StreamableHttpHandler {
 		}
 
 		return $this->jsonrpc_success( $id, $data );
+	}
+
+	/**
+	 * Handle the resources/list JSON-RPC method.
+	 *
+	 * @param int|string           $id     The JSON-RPC request id.
+	 * @param array<string, mixed> $params The request params (unused).
+	 * @return array<string, mixed>
+	 */
+	private function handle_resources_list( int|string $id, array $params ): array { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found
+		return $this->jsonrpc_success(
+			$id,
+			[
+				'resources' => $this->resource_registry->list_resources(),
+			]
+		);
+	}
+
+	/**
+	 * Handle the resources/read JSON-RPC method.
+	 *
+	 * @param int|string           $id     The JSON-RPC request id.
+	 * @param array<string, mixed> $params The request params.
+	 * @return array<string, mixed>
+	 */
+	private function handle_resources_read( int|string $id, array $params ): array {
+		$uri = isset( $params['uri'] ) ? (string) $params['uri'] : '';
+
+		if ( '' === $uri ) {
+			return $this->jsonrpc_error( $id, self::INVALID_PARAMS, 'Missing required parameter: uri' );
+		}
+
+		$result = $this->resource_registry->read_resource( $uri );
+
+		if ( is_wp_error( $result ) ) {
+			return $this->jsonrpc_error( $id, self::INVALID_PARAMS, $result->get_error_message() );
+		}
+
+		return $this->jsonrpc_success( $id, $result );
+	}
+
+	/**
+	 * Handle the prompts/list JSON-RPC method.
+	 *
+	 * @param int|string           $id     The JSON-RPC request id.
+	 * @param array<string, mixed> $params The request params (unused).
+	 * @return array<string, mixed>
+	 */
+	private function handle_prompts_list( int|string $id, array $params ): array { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found
+		return $this->jsonrpc_success(
+			$id,
+			[
+				'prompts' => $this->prompt_registry->list_prompts(),
+			]
+		);
+	}
+
+	/**
+	 * Handle the prompts/get JSON-RPC method.
+	 *
+	 * @param int|string           $id     The JSON-RPC request id.
+	 * @param array<string, mixed> $params The request params.
+	 * @return array<string, mixed>
+	 */
+	private function handle_prompts_get( int|string $id, array $params ): array {
+		$name      = isset( $params['name'] ) ? (string) $params['name'] : '';
+		$arguments = isset( $params['arguments'] ) && is_array( $params['arguments'] ) ? $params['arguments'] : array();
+
+		if ( '' === $name ) {
+			return $this->jsonrpc_error( $id, self::INVALID_PARAMS, 'Missing required parameter: name' );
+		}
+
+		$result = $this->prompt_registry->get_prompt( $name, $arguments );
+
+		if ( is_wp_error( $result ) ) {
+			return $this->jsonrpc_error( $id, self::INVALID_PARAMS, $result->get_error_message() );
+		}
+
+		return $this->jsonrpc_success( $id, $result );
 	}
 
 	/**
