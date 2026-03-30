@@ -2362,7 +2362,144 @@ class BricksService {
 		return $this->save_elements( $post_id, $elements );
 	}
 
+	
 	/**
+	 * Get a human-readable visual layout tree for a page.
+	 *
+	 * Returns a nested tree with element IDs, names, labels, depth,
+	 * global classes, text previews, and background color hints.
+	 * Use this with view=visual on page:get to understand existing page structure before editing.
+	 *
+	 * @param int $post_id The post ID.
+	 * @return array<string, mixed> Visual layout tree.
+	 */
+	public function get_visual_layout( int $post_id ): array {
+		$elements = $this->get_elements( $post_id );
+
+		if ( empty( $elements ) ) {
+			return [
+				'tree'  => [],
+				'total' => 0,
+			];
+		}
+
+		// Build ID → element map and children map.
+		$el_map      = [];
+		$children_of = [];
+
+		foreach ( $elements as $el ) {
+			$id = $el['id'] ?? '';
+			if ( ''  === $id ) {
+				continue;
+			}
+			$el_map[ $id ] = $el;
+		}
+
+		foreach ( $elements as $el ) {
+			$id     = $el['id'] ?? '';
+			$parent = $el['parent'] ?? 0;
+			if ( ''  === $id ) {
+				continue;
+			}
+			$parent_key = ( 0 === $parent || '0' === $parent ) ? '__root__' : (string) $parent;
+			$children_of[ $parent_key ][] = $id;
+		}
+
+		// Build tree from root elements.
+		$root_ids = $children_of['__root__'] ?? [];
+		$tree     = [];
+
+		foreach ( $root_ids as $root_id ) {
+			if ( isset( $el_map[ $root_id ] ) ) {
+				$tree[] = $this->build_visual_node( $el_map[ $root_id ], $el_map, $children_of, 0 );
+			}
+		}
+
+		return [
+			'tree'  => $tree,
+			'total' => count( $elements ),
+		];
+	}
+
+	/**
+	 * Build a single visual node for the layout tree.
+	 *
+	 * @param array<string, mixed>              $el          The element data.
+	 * @param array<string, array<string,mixed>> $el_map      Map of all elements by ID.
+	 * @param array<string, string[]>            $children_of Map of parent ID to child IDs.
+	 * @param int                               $depth       Current nesting depth.
+	 * @return array<string, mixed> Visual node.
+	 */
+	private function build_visual_node( array $el, array $el_map, array $children_of, int $depth ): array {
+		$id       = $el['id'] ?? '';
+		$name     = $el['name'] ?? 'unknown';
+		$settings = $el['settings'] ?? [];
+
+		// Label: prefer _label setting, fall back to element name.
+		$label = $settings['_label'] ?? $name;
+
+		// Global classes applied to this element.
+		$css_classes = $settings['_cssGlobalClasses'] ?? [];
+		if ( is_string( $css_classes ) ) {
+			$css_classes = array_filter( array_map( 'trim', explode( ' ', $css_classes ) ) );
+		}
+
+		// Text preview from common text-bearing settings (max 80 chars).
+		$text_preview = null;
+		foreach ( [ 'text', 'content', 'heading', 'label' ] as $tk ) {
+			if ( ! empty( $settings[ $tk ] ) && is_string( $settings[ $tk ] ) ) {
+				$raw          = wp_strip_all_tags( $settings[ $tk ] );
+				$text_preview = mb_strlen( $raw ) > 80 ? mb_substr( $raw, 0, 77 ) . '...' : $raw;
+				break;
+			}
+		}
+
+		// Background color hint.
+		$bg_color = null;
+		$bg       = $settings['_background'] ?? [];
+		if ( is_array( $bg ) ) {
+			$color = $bg['color'] ?? [];
+			if ( is_array( $color ) ) {
+				$bg_color = $color['hex'] ?? ( $color['raw'] ?? null );
+			} elseif ( is_string( $color ) ) {
+				$bg_color = $color;
+			}
+		}
+
+		$node = [
+			'id'    => $id,
+			'name'  => $name,
+			'label' => $label,
+			'depth' => $depth,
+		];
+
+		if ( ! empty( $css_classes ) ) {
+			$node['global_classes'] = array_values( $css_classes );
+		}
+
+		if ( null !== $text_preview ) {
+			$node['text_preview'] = $text_preview;
+		}
+
+		if ( null !== $bg_color ) {
+			$node['bg_color'] = $bg_color;
+		}
+
+		// Recurse into children.
+		$child_ids = $children_of[ $id ] ?? [];
+		if ( ! empty( $child_ids ) ) {
+			$node['children'] = [];
+			foreach ( $child_ids as $cid ) {
+				if ( isset( $el_map[ $cid ] ) ) {
+					$node['children'][] = $this->build_visual_node( $el_map[ $cid ], $el_map, $children_of, $depth + 1 );
+				}
+			}
+		}
+
+		return $node;
+	}
+
+/**
 	 * Get a tree outline summary of a page's Bricks elements.
 	 *
 	 * Returns element names/IDs in tree structure with type counts.
@@ -7673,4 +7810,103 @@ class BricksService {
 			'warning'  => __( 'Scripts are executed on page load. Test carefully.', 'bricks-mcp' ),
 		);
 	}
+	
+	/**
+	 * Diagnose a Bricks page for known issues before editing.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return array<string, mixed> Diagnostic report.
+	 */
+	public function diagnose_page( int $post_id ): array {
+		$post     = get_post( $post_id );
+		$elements = $this->get_elements( $post_id );
+		$issues   = array();
+		$id_map   = array();
+		foreach ( $elements as $el ) { $id_map[ $el['id'] ] = true; }
+		$gcs    = $this->get_global_classes();
+		$gc_ids = array();
+		foreach ( $gcs as $gc ) { $gc_ids[ $gc['id'] ?? '' ] = true; }
+		$ttype = get_post_meta( $post_id, '_bricks_template_type', true );
+		if ( in_array( $ttype, array( 'header', 'footer' ), true ) ) {
+			if ( ! empty( get_post_meta( $post_id, '_bricks_page_content_2', true ) ) ) {
+				$issues[] = array( 'element_id' => null, 'severity' => 'error', 'type' => 'phantom_content', 'message' => ucfirst( $ttype ) . ' has phantom _bricks_page_content_2.', 'fix' => 'Run delete_post_meta( ' . $post_id . ", '_bricks_page_content_2' )" );
+			}
+		}
+		$bps = array_column( $this->get_breakpoints(), 'key' );
+		if ( empty( $bps ) ) { $bps = array( 'tablet_landscape', 'tablet_portrait', 'mobile_landscape', 'mobile_portrait', 'mobile' ); }
+		foreach ( $elements as $el ) {
+			$el_id    = $el['id'] ?? 'unknown';
+			$el_name  = $el['name'] ?? 'unknown';
+			$settings = $el['settings'] ?? array();
+			foreach ( array( 'customScriptsBodyFooter', 'customScriptsBodyHeader', 'customScriptsHeader' ) as $sf ) {
+				if ( ! empty( $settings[ $sf ] ) && strpos( $settings[ $sf ], '<script' ) === false ) {
+					$issues[] = array( 'element_id' => $el_id, 'severity' => 'error', 'type' => 'script_missing_tags', 'message' => "Element {$el_id} ({$el_name}): {$sf} has JS without <script> tags.", 'fix' => 'Wrap in <script>...</script>.' );
+				}
+			}
+			if ( 'code' === $el_name && ! empty( $settings['code'] ) && strpos( $settings['code'], '<?php' ) !== false && empty( $settings['executeCode'] ) ) {
+				$issues[] = array( 'element_id' => $el_id, 'severity' => 'warning', 'type' => 'php_execute_disabled', 'message' => "Element {$el_id}: code element has PHP but executeCode is not enabled.", 'fix' => 'Set settings.executeCode = true.' );
+			}
+			if ( ! empty( $settings['_cssCustom'] ) && strpos( $settings['_cssCustom'], '%root%' ) !== false ) {
+				$issues[] = array( 'element_id' => $el_id, 'severity' => 'error', 'type' => 'root_placeholder', 'message' => "Element {$el_id}: _cssCustom uses %root%.", 'fix' => "Replace %root% with #brxe-{$el_id}" );
+			}
+			if ( array_key_exists( '_maxWidth', $settings ) ) {
+				$issues[] = array( 'element_id' => $el_id, 'severity' => 'error', 'type' => 'wrong_key_maxwidth', 'message' => "Element {$el_id}: uses _maxWidth.", 'fix' => 'Rename to _widthMax.' );
+			}
+			foreach ( array( '_background', 'color', 'iconColor' ) as $ck ) {
+				if ( isset( $settings[ $ck ] ) && is_string( $settings[ $ck ] ) && preg_match( '/^#[0-9a-fA-F]{3,8}$/', $settings[ $ck ] ) ) {
+					$issues[] = array( 'element_id' => $el_id, 'severity' => 'warning', 'type' => 'plain_string_color', 'message' => "Element {$el_id}: {$ck} is a plain hex string.", 'fix' => 'Change ' . $ck . ' to {"hex":"' . $settings[ $ck ] . '"}.' );
+				}
+			}
+			foreach ( array_keys( $settings ) as $key ) {
+				if ( strpos( $key, ':' ) === false ) { continue; }
+				$pseudo  = array( 'hover', 'focus', 'active', 'visited', 'placeholder', 'before', 'after' );
+				$segs    = explode( ':', $key );
+				array_shift( $segs );
+				$bad     = false;
+				$bad_seg = '';
+				foreach ( $segs as $seg ) {
+					if ( in_array( $seg, $pseudo, true ) ) { continue; }
+					if ( strpos( $seg, 'variant-' ) === 0 ) { continue; }
+					if ( ! in_array( $seg, $bps, true ) ) { $bad = true; $bad_seg = $seg; break; }
+				}
+				if ( $bad ) {
+					$issues[] = array( 'element_id' => $el_id, 'severity' => 'warning', 'type' => 'invalid_breakpoint', 'message' => "Element {$el_id}: key '{$key}' has unknown segment '{$bad_seg}'.", 'fix' => 'Valid IDs: ' . implode( ', ', $bps ) . '. Pseudo-states and variant-* are valid.' );
+				}
+			}
+			foreach ( ( $el['children'] ?? array() ) as $child_id ) {
+				if ( ! isset( $id_map[ $child_id ] ) ) {
+					$issues[] = array( 'element_id' => $el_id, 'severity' => 'error', 'type' => 'orphaned_child', 'message' => "Element {$el_id}: child '{$child_id}' does not exist.", 'fix' => "Remove '{$child_id}' from children." );
+				}
+			}
+			if ( ! empty( $settings['_cssGlobalClasses'] ) ) {
+				$used = is_array( $settings['_cssGlobalClasses'] ) ? $settings['_cssGlobalClasses'] : explode( ' ', $settings['_cssGlobalClasses'] );
+				foreach ( $used as $cid ) {
+					$cid = trim( $cid );
+					if ( ! empty( $cid ) && ! isset( $gc_ids[ $cid ] ) ) {
+						$issues[] = array( 'element_id' => $el_id, 'severity' => 'warning', 'type' => 'missing_global_class', 'message' => "Element {$el_id}: references missing class '{$cid}'.", 'fix' => 'Create via global_class:create or remove.' );
+					}
+				}
+			}
+			if ( ! empty( $settings['_border'] ) && is_array( $settings['_border'] ) ) {
+				if ( isset( $settings['_border']['width'] ) && is_int( $settings['_border']['width'] ) ) {
+					$w = $settings['_border']['width'];
+					$issues[] = array( 'element_id' => $el_id, 'severity' => 'warning', 'type' => 'integer_border', 'message' => "Element {$el_id}: _border.width is integer {$w}.", 'fix' => "Change to '{$w}px'." );
+				}
+			}
+		}
+		$errors   = count( array_filter( $issues, fn( $i ) => 'error' === $i['severity'] ) );
+		$warnings = count( array_filter( $issues, fn( $i ) => 'warning' === $i['severity'] ) );
+		return array(
+			'post_id'       => $post_id,
+			'title'         => $post ? $post->post_title : '',
+			'element_count' => count( $elements ),
+			'issue_count'   => count( $issues ),
+			'error_count'   => $errors,
+			'warning_count' => $warnings,
+			'status'        => 0 === count( $issues ) ? 'clean' : ( $errors > 0 ? 'errors' : 'warnings' ),
+			'issues'        => $issues,
+		);
+	}
+	
 }
+
