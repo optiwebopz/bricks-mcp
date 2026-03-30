@@ -1458,7 +1458,7 @@ final class Router {
 		// Custom code consolidated tool.
 		$this->register_tool(
 			'code',
-			__( "Manage page-level custom CSS and JavaScript.\n\nActions:\n- get_page_css: Get page custom CSS and scripts (requires: post_id)\n- set_page_css: Set page custom CSS (requires: post_id, css)\n- get_page_scripts: Get page custom scripts only (requires: post_id)\n- set_page_scripts: Set page custom scripts (requires: post_id; optional: header, body_header, body_footer) [license required, dangerous_actions required]", 'bricks-mcp' ),
+			__( "Manage page-level custom CSS and JavaScript.\n\nActions:\n- get_page_css: Get page custom CSS and scripts (requires: post_id)\n- set_page_css: Set page custom CSS (requires: post_id, css)\n- get_page_scripts: Get page custom scripts only (requires: post_id)\n- set_page_scripts: Set page custom scripts (requires: post_id; optional: header, body_header, body_footer) [dangerous_actions required]", 'bricks-mcp' ),
 			array(
 				'type'       => 'object',
 				'properties' => array(
@@ -2073,8 +2073,6 @@ final class Router {
 	 * page targeting. Element conditions use "key/compare/value" and control per-element
 	 * render visibility.
 	 *
-	 * Read-only — no license gate required.
-	 *
 	 * @param array<string, mixed> $args Tool arguments (unused).
 	 * @return array<string, mixed>|\WP_Error Condition schema or error.
 	 */
@@ -2381,7 +2379,6 @@ final class Router {
 	 * Tool: Get global queries.
 	 *
 	 * Returns all reusable global query definitions stored in bricks_global_queries option.
-	 * Read-only — no license gate required.
 	 *
 	 * @param array<string, mixed> $args Tool arguments (unused).
 	 * @return array<string, mixed>|\WP_Error Global queries list or error.
@@ -2406,7 +2403,6 @@ final class Router {
 	 * Tool: Set global query (create or update).
 	 *
 	 * Creates a new global query or updates an existing one by query_id.
-	 * License-gated write operation.
 	 *
 	 * @param array<string, mixed> $args Tool arguments including name, settings, optional query_id and category.
 	 * @return array<string, mixed>|\WP_Error Result data or error.
@@ -2477,7 +2473,6 @@ final class Router {
 	 * Tool: Delete global query.
 	 *
 	 * Deletes a global query by ID and warns about orphaned element references.
-	 * License-gated write operation.
 	 *
 	 * @param array<string, mixed> $args Tool arguments including query_id.
 	 * @return array<string, mixed>|\WP_Error Result data or error.
@@ -3655,7 +3650,6 @@ final class Router {
 	 * Tool: Get element visibility conditions.
 	 *
 	 * Returns the raw _conditions settings from a specific element on a page.
-	 * Read-only — no license gate required.
 	 *
 	 * @param array<string, mixed> $args Tool arguments with 'post_id' and 'element_id'.
 	 * @return array<string, mixed>|\WP_Error Conditions data or error.
@@ -3727,8 +3721,6 @@ final class Router {
 	 * Validates condition structure (2-level array nesting, key whitelist, user role
 	 * validation) and sets _conditions on a specific element. Accepts full Bricks
 	 * condition format only — no simplified shorthand.
-	 *
-	 * Write operation — requires license.
 	 *
 	 * @param array<string, mixed> $args Tool arguments with 'post_id', 'element_id', 'conditions'.
 	 * @return array<string, mixed>|\WP_Error Result data or error.
@@ -8110,7 +8102,7 @@ final class Router {
 				"popupCloseOn: unset=both backdrop+ESC, 'backdrop'=click only, 'esc'=key only, 'none'=disabled. Do NOT pass 'both'.",
 				'popupAjax only supports Post, Term, and User context types',
 				'Use bricks:get_interaction_schema for full trigger/action reference',
-				'Use template:get_popup_settings to read current popup config, template:set_popup_settings to write (license required)',
+				'Use template:get_popup_settings to read current popup config, template:set_popup_settings to write',
 				'Null value in set_popup_settings deletes that key (reverts to default)',
 				'An infobox is a popup sub-type (popupIsInfoBox=true). Create as popup, then set popupIsInfoBox via set_popup_settings. See infobox_behavior for which settings apply.',
 				'template:list and template:get responses include is_infobox boolean for quick identification.',
