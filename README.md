@@ -27,7 +27,7 @@ Bricks MCP is a WordPress plugin that implements an [MCP (Model Context Protocol
 
 ## Installation
 
-1. Download the latest release from [GitHub Releases](https://github.com/buffupmedia/bricks-mcp/releases)
+1. Download the latest release from [GitHub Releases](https://github.com/cristianuibar/bricks-mcp/releases)
 2. Upload to your WordPress site via Plugins > Add New > Upload Plugin
 3. Activate the plugin
 4. Go to Settings > Bricks MCP to configure
@@ -205,7 +205,7 @@ add_filter( 'bricks_mcp_tools', function( $tools ) {
 Prerequisites: [Docker](https://docs.docker.com/get-docker/) and [Node.js](https://nodejs.org/) 18+.
 
 ```bash
-git clone https://github.com/buffupmedia/bricks-mcp.git
+git clone https://github.com/cristianuibar/bricks-mcp.git
 cd bricks-mcp
 npm install
 npm run start
