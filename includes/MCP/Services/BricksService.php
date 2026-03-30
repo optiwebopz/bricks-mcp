@@ -120,13 +120,33 @@ class BricksService {
 	 * @return array<int, array<string, mixed>> Flat array of elements, empty array if none.
 	 */
 	public function get_elements( int $post_id ): array {
-		$elements = get_post_meta( $post_id, self::META_KEY, true );
+		$elements = get_post_meta( $post_id, $this->resolve_elements_meta_key( $post_id ), true );
 
 		if ( ! is_array( $elements ) ) {
 			return [];
 		}
 
 		return $elements;
+	}
+
+	/**
+	 * Resolve the correct Bricks meta key for reading element content.
+	 *
+	 * Header and footer templates store their content under dedicated meta keys
+	 * (_bricks_page_header_2 and _bricks_page_footer_2 respectively), not the
+	 * default _bricks_page_content_2. This method checks the template type and
+	 * returns the appropriate key.
+	 *
+	 * @param int $post_id The post ID.
+	 * @return string The meta key to use for reading element content.
+	 */
+	private function resolve_elements_meta_key( int $post_id ): string {
+		$template_type = get_post_meta( $post_id, '_bricks_template_type', true );
+		return match ( $template_type ) {
+			'header' => defined( 'BRICKS_DB_PAGE_HEADER' ) ? BRICKS_DB_PAGE_HEADER : '_bricks_page_header_2',
+			'footer' => defined( 'BRICKS_DB_PAGE_FOOTER' ) ? BRICKS_DB_PAGE_FOOTER : '_bricks_page_footer_2',
+			default  => self::META_KEY,
+		};
 	}
 
 	/**
@@ -168,26 +188,27 @@ class BricksService {
 
 		// Temporarily unhook Bricks sanitize/update filters that block programmatic meta writes.
 		$this->unhook_bricks_meta_filters();
+		try {
+			$updated = update_post_meta( $post_id, self::META_KEY, $elements );
 
-		$updated = update_post_meta( $post_id, self::META_KEY, $elements );
+			if ( false === $updated ) {
+				// update_post_meta returns false when old === new (stale cache or serialization mismatch).
+				// Force write via delete + add.
+				delete_post_meta( $post_id, self::META_KEY );
+				add_post_meta( $post_id, self::META_KEY, $elements, true );
+			}
 
-		if ( false === $updated ) {
-			// update_post_meta returns false when old === new (stale cache or serialization mismatch).
-			// Force write via delete + add.
-			delete_post_meta( $post_id, self::META_KEY );
-			add_post_meta( $post_id, self::META_KEY, $elements, true );
+			update_post_meta( $post_id, self::EDITOR_MODE_KEY, 'bricks' );
+
+			// Trigger CSS regeneration so frontend styles reflect new content.
+			$this->trigger_css_regeneration( $post_id );
+
+			// Verify write persisted — bypass cache, read raw from database.
+			wp_cache_delete( $post_id, 'post_meta' );
+			$stored = get_post_meta( $post_id, self::META_KEY, true );
+		} finally {
+			$this->rehook_bricks_meta_filters();
 		}
-
-		update_post_meta( $post_id, self::EDITOR_MODE_KEY, 'bricks' );
-
-		// Trigger CSS regeneration so frontend styles reflect new content.
-		$this->trigger_css_regeneration( $post_id );
-
-		// Verify write persisted — bypass cache, read raw from database.
-		wp_cache_delete( $post_id, 'post_meta' );
-		$stored = get_post_meta( $post_id, self::META_KEY, true );
-
-		$this->rehook_bricks_meta_filters();
 
 		if ( ! is_array( $stored ) || count( $stored ) !== count( $elements ) ) {
 			return new \WP_Error(
@@ -760,8 +781,11 @@ class BricksService {
 
 		// Set template type meta.
 		$this->unhook_bricks_meta_filters();
-		update_post_meta( $post_id, '_bricks_template_type', $type );
-		$this->rehook_bricks_meta_filters();
+		try {
+			update_post_meta( $post_id, '_bricks_template_type', $type );
+		} finally {
+			$this->rehook_bricks_meta_filters();
+		}
 
 		// Enable Bricks editor.
 		$this->enable_bricks_editor( $post_id );
@@ -769,11 +793,14 @@ class BricksService {
 		// Set conditions if provided — merge into existing settings to preserve other keys.
 		if ( ! empty( $args['conditions'] ) && is_array( $args['conditions'] ) ) {
 			$this->unhook_bricks_meta_filters();
-			$settings               = get_post_meta( $post_id, '_bricks_template_settings', true );
-			$settings               = is_array( $settings ) ? $settings : [];
-			$settings['conditions'] = $args['conditions'];
-			update_post_meta( $post_id, '_bricks_template_settings', $settings );
-			$this->rehook_bricks_meta_filters();
+			try {
+				$settings               = get_post_meta( $post_id, '_bricks_template_settings', true );
+				$settings               = is_array( $settings ) ? $settings : [];
+				$settings['conditions'] = $args['conditions'];
+				update_post_meta( $post_id, '_bricks_template_settings', $settings );
+			} finally {
+				$this->rehook_bricks_meta_filters();
+			}
 		}
 
 		return $post_id;
@@ -853,8 +880,11 @@ class BricksService {
 			}
 
 			$this->unhook_bricks_meta_filters();
-			update_post_meta( $template_id, '_bricks_template_type', $new_type );
-			$this->rehook_bricks_meta_filters();
+			try {
+				update_post_meta( $template_id, '_bricks_template_type', $new_type );
+			} finally {
+				$this->rehook_bricks_meta_filters();
+			}
 		}
 
 		// Update tags (template_tag taxonomy).
@@ -906,11 +936,14 @@ class BricksService {
 
 		// Strip conditions from the copy to prevent template slot conflicts.
 		$this->unhook_bricks_meta_filters();
-		$settings = get_post_meta( $new_post_id, '_bricks_template_settings', true );
-		$settings = is_array( $settings ) ? $settings : [];
-		unset( $settings['conditions'] );
-		update_post_meta( $new_post_id, '_bricks_template_settings', $settings );
-		$this->rehook_bricks_meta_filters();
+		try {
+			$settings = get_post_meta( $new_post_id, '_bricks_template_settings', true );
+			$settings = is_array( $settings ) ? $settings : [];
+			unset( $settings['conditions'] );
+			update_post_meta( $new_post_id, '_bricks_template_settings', $settings );
+		} finally {
+			$this->rehook_bricks_meta_filters();
+		}
 
 		return $new_post_id;
 	}
@@ -1210,6 +1243,16 @@ class BricksService {
 		update_option( 'bricks_global_classes_timestamp', time() );
 		update_option( 'bricks_global_classes_user', get_current_user_id() );
 
+		// Verify persistence — bypass object cache.
+		wp_cache_delete( 'bricks_global_classes', 'options' );
+		$stored = get_option( 'bricks_global_classes', null );
+		if ( null === $stored || ! is_array( $stored ) ) {
+			return new \WP_Error(
+				'global_class_create_failed',
+				__( 'Global class appeared to save but verification read-back failed. The database may have rejected the write.', 'bricks-mcp' )
+			);
+		}
+
 		return $new_class;
 	}
 
@@ -1273,6 +1316,16 @@ class BricksService {
 			update_option( 'bricks_global_classes_timestamp', time() );
 			update_option( 'bricks_global_classes_user', get_current_user_id() );
 
+			// Verify persistence — bypass object cache.
+			wp_cache_delete( 'bricks_global_classes', 'options' );
+			$stored = get_option( 'bricks_global_classes', null );
+			if ( null === $stored || ! is_array( $stored ) ) {
+				return new \WP_Error(
+					'global_class_update_failed',
+					__( 'Global class appeared to save but verification read-back failed. The database may have rejected the write.', 'bricks-mcp' )
+				);
+			}
+
 			return $class;
 		}
 		unset( $class );
@@ -1332,6 +1385,16 @@ class BricksService {
 		update_option( 'bricks_global_classes_trash', $trash );
 		update_option( 'bricks_global_classes_timestamp', time() );
 		update_option( 'bricks_global_classes_user', get_current_user_id() );
+
+		// Verify persistence — bypass object cache.
+		wp_cache_delete( 'bricks_global_classes', 'options' );
+		$stored = get_option( 'bricks_global_classes', null );
+		if ( null === $stored || ! is_array( $stored ) ) {
+			return new \WP_Error(
+				'global_class_trash_failed',
+				__( 'Global class trash appeared to save but verification read-back failed. The database may have rejected the write.', 'bricks-mcp' )
+			);
+		}
 
 		return true;
 	}
@@ -1456,6 +1519,13 @@ class BricksService {
 			update_option( 'bricks_global_classes', $classes );
 			update_option( 'bricks_global_classes_timestamp', time() );
 			update_option( 'bricks_global_classes_user', get_current_user_id() );
+
+			// Verify persistence — bypass object cache.
+			wp_cache_delete( 'bricks_global_classes', 'options' );
+			$stored = get_option( 'bricks_global_classes', null );
+			if ( null === $stored || ! is_array( $stored ) ) {
+				$errors['_readback'] = 'Batch create appeared to save but verification read-back failed.';
+			}
 		}
 
 		return [
@@ -1517,6 +1587,13 @@ class BricksService {
 			update_option( 'bricks_global_classes_trash', $trash );
 			update_option( 'bricks_global_classes_timestamp', time() );
 			update_option( 'bricks_global_classes_user', get_current_user_id() );
+
+			// Verify persistence — bypass object cache.
+			wp_cache_delete( 'bricks_global_classes', 'options' );
+			$stored = get_option( 'bricks_global_classes', null );
+			if ( null === $stored || ! is_array( $stored ) ) {
+				$errors['_readback'] = 'Batch trash appeared to save but verification read-back failed.';
+			}
 		}
 
 		return [
@@ -2772,11 +2849,14 @@ class BricksService {
 
 		// Merge conditions into existing settings — preserve all other settings keys.
 		$this->unhook_bricks_meta_filters();
-		$settings               = get_post_meta( $template_id, '_bricks_template_settings', true );
-		$settings               = is_array( $settings ) ? $settings : [];
-		$settings['conditions'] = $conditions;
-		update_post_meta( $template_id, '_bricks_template_settings', $settings );
-		$this->rehook_bricks_meta_filters();
+		try {
+			$settings               = get_post_meta( $template_id, '_bricks_template_settings', true );
+			$settings               = is_array( $settings ) ? $settings : [];
+			$settings['conditions'] = $conditions;
+			update_post_meta( $template_id, '_bricks_template_settings', $settings );
+		} finally {
+			$this->rehook_bricks_meta_filters();
+		}
 
 		return true;
 	}
@@ -6388,19 +6468,22 @@ class BricksService {
 
 		// Read-merge-write pattern — preserve all other settings keys.
 		$this->unhook_bricks_meta_filters();
-		$settings = get_post_meta( $template_id, '_bricks_template_settings', true );
-		$settings = is_array( $settings ) ? $settings : [];
+		try {
+			$settings = get_post_meta( $template_id, '_bricks_template_settings', true );
+			$settings = is_array( $settings ) ? $settings : [];
 
-		foreach ( $popup_settings as $key => $value ) {
-			if ( null === $value ) {
-				unset( $settings[ $key ] );
-			} else {
-				$settings[ $key ] = $value;
+			foreach ( $popup_settings as $key => $value ) {
+				if ( null === $value ) {
+					unset( $settings[ $key ] );
+				} else {
+					$settings[ $key ] = $value;
+				}
 			}
-		}
 
-		update_post_meta( $template_id, '_bricks_template_settings', $settings );
-		$this->rehook_bricks_meta_filters();
+			update_post_meta( $template_id, '_bricks_template_settings', $settings );
+		} finally {
+			$this->rehook_bricks_meta_filters();
+		}
 
 		// Re-read to return current state.
 		$updated = $this->get_popup_settings( $template_id );
@@ -6956,7 +7039,7 @@ class BricksService {
 			);
 		}
 
-		$content = get_post_meta( $template_id, self::META_KEY, true ) ?: array();
+		$content = get_post_meta( $template_id, $this->resolve_elements_meta_key( $template_id ), true ) ?: array();
 
 		$template_type_key = defined( 'BRICKS_DB_TEMPLATE_TYPE' ) ? BRICKS_DB_TEMPLATE_TYPE : '_bricks_template_type';
 		$page_settings_key = defined( 'BRICKS_DB_PAGE_SETTINGS' ) ? BRICKS_DB_PAGE_SETTINGS : '_bricks_page_settings';
