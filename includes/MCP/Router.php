@@ -38,38 +38,9 @@ final class Router {
 	private const COMPONENTS_OPTION = 'bricks_components';
 
 	/**
-	 * Tool names exposed to MCP clients in tools/list.
-	 *
-	 * Hidden legacy tools remain callable through execute_tool() alias shims.
-	 *
-	 * @var array<int, string>
-	 */
-	private const VISIBLE_TOOL_NAMES = array(
-		'get_site_info',
-		'get_builder_guide',
-		'bricks',
-		'content',
-		'template',
-		'design',
-		'media',
-		'menu',
-		'component',
-		'woocommerce',
-		'code',
-	);
-
-	/**
 	 * Registered tools.
 	 *
-	 * @var array<string, array{
-	 *     name: string,
-	 *     description: string,
-	 *     inputSchema: array,
-	 *     handler: callable,
-	 *     annotations?: array<string, mixed>,
-	 *     outputSchema?: array<string, mixed>,
-	 *     defaults?: array<string, mixed>
-	 * }>
+	 * @var array<string, array{name: string, description: string, inputSchema: array, handler: callable}>
 	 */
 	private array $tools = array();
 
@@ -219,13 +190,6 @@ final class Router {
 			array( $this, 'tool_wordpress' )
 		);
 
-		$this->register_tool(
-			'content',
-			__( 'Manage WordPress and Bricks content for a given site; requires an action and validates target-specific inputs.', 'bricks-mcp' ),
-			$this->get_content_tool_schema(),
-			array( $this, 'tool_content' )
-		);
-
 		/**
 		 * Filter the registered MCP tools.
 		 *
@@ -239,548 +203,18 @@ final class Router {
 	/**
 	 * Register a tool.
 	 *
-	 * @param string               $name          Tool name.
-	 * @param string               $description   Tool description.
-	 * @param array<string, mixed> $input_schema  Tool input schema.
-	 * @param callable             $handler       Tool handler callback.
-	 * @param array<string, mixed> $annotations   Optional MCP tool annotations.
-	 * @param array<string, mixed> $output_schema Optional MCP output schema.
-	 * @param array<string, mixed> $defaults      Optional smart defaults metadata.
+	 * @param string   $name             Tool name.
+	 * @param string   $description      Tool description.
+	 * @param array    $input_schema     Tool input schema.
+	 * @param callable $handler          Tool handler callback.
 	 * @return void
 	 */
-	public function register_tool(
-		string $name,
-		string $description,
-		array $input_schema,
-		callable $handler,
-		array $annotations = array(),
-		array $output_schema = array(),
-		array $defaults = array()
-	): void {
-		$description   = $this->get_normalized_tool_description( $name, $description );
-		$input_schema  = $this->inject_response_format_property( $input_schema );
-
-		// Auto-populate v2.0 metadata when callers use the legacy 4-arg signature.
-		// This ensures every tool exposes annotations, outputSchema, and defaults
-		// without requiring existing `bricks_mcp_tools` filter callbacks to change.
-		$annotations   = array() === $annotations ? $this->get_default_tool_annotations( $name ) : $annotations;
-		$output_schema = array() === $output_schema ? $this->get_default_tool_output_schema( $name ) : $output_schema;
-		$defaults      = array() === $defaults ? $this->get_default_tool_defaults( $name ) : $defaults;
-
-		$tool = array(
+	public function register_tool( string $name, string $description, array $input_schema, callable $handler ): void {
+		$this->tools[ $name ] = array(
 			'name'        => $name,
 			'description' => $description,
 			'inputSchema' => $input_schema,
 			'handler'     => $handler,
-		);
-
-		if ( array() !== $annotations ) {
-			$tool['annotations'] = $annotations;
-		}
-
-		if ( array() !== $output_schema ) {
-			$tool['outputSchema'] = $output_schema;
-		}
-
-		if ( array() !== $defaults ) {
-			$tool['defaults'] = $defaults;
-		}
-
-		$this->tools[ $name ] = $tool;
-	}
-
-	/**
-	 * Get the Bricks service for protocol registries.
-	 *
-	 * @return BricksService
-	 */
-	public function get_bricks_service(): BricksService {
-		return $this->bricks_service;
-	}
-
-	/**
-	 * Inject response_format into a tool schema.
-	 *
-	 * @param array<string, mixed> $input_schema Tool input schema.
-	 * @return array<string, mixed>
-	 */
-	private function inject_response_format_property( array $input_schema ): array {
-		$properties = $input_schema['properties'] ?? array();
-
-		if ( ! is_array( $properties ) || isset( $properties['response_format'] ) ) {
-			return $input_schema;
-		}
-
-		$properties['response_format'] = array(
-			'type'        => 'string',
-			'enum'        => array( 'verbose', 'compact' ),
-			'description' => __( 'Response verbosity. Use verbose for full detail or compact to omit empty fields and reduce token usage.', 'bricks-mcp' ),
-		);
-
-		$input_schema['properties'] = $properties;
-
-		return $input_schema;
-	}
-
-	/**
-	 * Build default annotations for a tool.
-	 *
-	 * @param string $name Tool name.
-	 * @return array<string, bool>
-	 */
-	private function get_default_tool_annotations( string $name ): array {
-		$read_only_tools = array(
-			'get_site_info',
-			'get_builder_guide',
-			'wordpress',
-		);
-
-		$destructive_tools = array(
-			'bricks',
-			'content',
-			'page',
-			'element',
-			'template',
-			'template_taxonomy',
-			'global_class',
-			'theme_style',
-			'typography_scale',
-			'color_palette',
-			'global_variable',
-			'menu',
-			'component',
-			'design',
-		);
-
-		$open_world_tools = array(
-			'media',
-			'template',
-		);
-
-		return array(
-			'readOnlyHint'    => in_array( $name, $read_only_tools, true ),
-			'destructiveHint' => in_array( $name, $destructive_tools, true ),
-			'idempotentHint'  => in_array( $name, $read_only_tools, true ),
-			'openWorldHint'   => in_array( $name, $open_world_tools, true ),
-		);
-	}
-
-	/**
-	 * Build default output schema for a tool.
-	 *
-	 * @param string $name Tool name.
-	 * @return array<string, mixed>
-	 */
-	private function get_default_tool_output_schema( string $name ): array { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found
-		return array(
-			'type'                 => 'object',
-			'additionalProperties' => true,
-		);
-	}
-
-	/**
-	 * Build default smart-default metadata for a tool.
-	 *
-	 * @param string $name Tool name.
-	 * @return array<string, mixed>
-	 */
-	private function get_default_tool_defaults( string $name ): array {
-		return match ( $name ) {
-			'wordpress' => array(
-				'get_posts' => array(
-					'post_type'      => 'post',
-					'posts_per_page' => 10,
-					'orderby'        => 'date',
-					'order'          => 'DESC',
-					'post_status'    => 'publish',
-				),
-				'get_users' => array(
-					'number' => 10,
-				),
-				'get_plugins' => array(
-					'status' => 'all',
-				),
-			),
-			'content' => array(
-				'list' => array(
-					'post_type'      => 'page',
-					'status'         => 'any',
-					'posts_per_page' => 20,
-					'paged'          => 1,
-					'bricks_only'    => true,
-				),
-				'get_posts' => array(
-					'post_type'      => 'post',
-					'posts_per_page' => 10,
-					'orderby'        => 'date',
-					'order'          => 'DESC',
-					'post_status'    => 'publish',
-				),
-			),
-			'page' => array(
-				'list' => array(
-					'post_type'      => 'page',
-					'status'         => 'any',
-					'posts_per_page' => 20,
-					'paged'          => 1,
-					'bricks_only'    => true,
-				),
-			),
-			'bricks' => array(
-				'get_settings' => array(
-					'category' => 'general',
-				),
-			),
-			'template' => array(
-				'list' => array(
-					'status' => 'publish',
-				),
-			),
-			'media' => array(
-				'list' => array(
-					'per_page' => 20,
-					'page'     => 1,
-				),
-			),
-			default => array(),
-		};
-	}
-
-	/**
-	 * Normalize tool descriptions to the action + target + constraint format.
-	 *
-	 * @param string $name        Tool name.
-	 * @param string $description Existing description.
-	 * @return string
-	 */
-	private function get_normalized_tool_description( string $name, string $description ): string {
-		return match ( $name ) {
-			'get_site_info'      => 'Read WordPress site details for the current installation; optionally runs diagnostics for connection health.',
-			'get_builder_guide'  => 'Read the Bricks builder guide for the current site; use it before editing Bricks content.',
-			'bricks'             => 'Manage Bricks builder settings and schema for the current site; requires an action scoped to builder data.',
-			'content'            => 'Manage WordPress and Bricks content for a given site; requires an action and validates target-specific inputs.',
-			'template'           => 'Manage Bricks templates and targeting rules for a given site; requires an action and validates template-specific inputs.',
-			'design'             => 'Manage Bricks design tokens and style systems for a given site; requires a design domain and an action.',
-			'media'              => 'Manage media assets for the current site; requires an action and validates upload or library constraints.',
-			'menu'               => 'Manage WordPress navigation menus for the current site; requires an action and a menu target when writing.',
-			'component'          => 'Manage Bricks components for the current site; requires an action and component-specific identifiers when writing.',
-			'woocommerce'        => 'Manage WooCommerce builder data for the current site; requires WooCommerce to be active and an action.',
-			'code'               => 'Manage page-level custom CSS and scripts for a given post; requires an action and a post ID.',
-			'wordpress'          => 'Read WordPress core data for the current site; requires a read-only action scoped to posts, users, or plugins.',
-			'page'               => 'Manage Bricks pages for the current site; requires an action and a page target when writing.',
-			'element'            => 'Manage Bricks elements for a given page; requires an action and explicit element identifiers when writing.',
-			'template_condition' => 'Manage Bricks template targeting rules for the current site; requires an action and template condition data.',
-			'template_taxonomy'  => 'Manage Bricks template tags and bundles for the current site; requires an action and taxonomy-specific identifiers when writing.',
-			'global_class'       => 'Manage Bricks global classes for the current site; requires an action and explicit class identifiers when writing.',
-			'theme_style'        => 'Manage Bricks theme styles for the current site; requires an action and explicit style identifiers when writing.',
-			'typography_scale'   => 'Manage Bricks typography scales for the current site; requires an action and explicit scale identifiers when writing.',
-			'color_palette'      => 'Manage Bricks color palettes for the current site; requires an action and explicit palette identifiers when writing.',
-			'global_variable'    => 'Manage Bricks global variables for the current site; requires an action and explicit variable identifiers when writing.',
-			'font'               => 'Manage Bricks font settings for the current site; requires an action and updates only explicit font options.',
-			default              => $description,
-		};
-	}
-
-	/**
-	 * Resolve alias tool calls to canonical tool names and arguments.
-	 *
-	 * @param string               $name      Requested tool name.
-	 * @param array<string, mixed> $arguments Tool arguments.
-	 * @return array{name: string, arguments: array<string, mixed>}|\WP_Error
-	 */
-	private function resolve_tool_call( string $name, array $arguments ): array|\WP_Error {
-		$aliases = $this->get_tool_aliases();
-
-		if ( isset( $this->tools[ $name ] ) ) {
-			return array(
-				'name'      => $name,
-				'arguments' => $arguments,
-			);
-		}
-
-		if ( ! isset( $aliases[ $name ] ) ) {
-			return new \WP_Error(
-				'unknown_tool',
-				sprintf(
-					/* translators: %s: Tool name */
-					__( 'Unknown tool: %s', 'bricks-mcp' ),
-					$name
-				)
-			);
-		}
-
-		$alias_arguments = $aliases[ $name ]['arguments'] ?? array();
-
-		return array(
-			'name'      => $aliases[ $name ]['name'],
-			'arguments' => array_merge( $alias_arguments, $arguments ),
-		);
-	}
-
-	/**
-	 * Format a tool result according to response_format.
-	 *
-	 * @param string               $name            Tool name.
-	 * @param array<string, mixed>|string $result   Raw result.
-	 * @param mixed                $response_format Requested response format.
-	 * @return array<string, mixed>|string
-	 */
-	private function format_tool_result( string $name, array|string $result, mixed $response_format ): array|string { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found
-		if ( 'compact' !== $response_format || ! is_array( $result ) ) {
-			return $result;
-		}
-
-		return $this->trim_compact_result( $result );
-	}
-
-	/**
-	 * Recursively trim null and empty collection values for compact responses.
-	 *
-	 * @param mixed $value Value to trim.
-	 * @return mixed
-	 */
-	private function trim_compact_result( mixed $value ): mixed {
-		if ( ! is_array( $value ) ) {
-			return $value;
-		}
-
-		if ( array() === $value ) {
-			return array();
-		}
-
-		$is_list = array_keys( $value ) === range( 0, count( $value ) - 1 );
-		$trimmed = array();
-
-		foreach ( $value as $key => $item ) {
-			$normalized = $this->trim_compact_result( $item );
-
-			if ( null === $normalized ) {
-				continue;
-			}
-
-			if ( is_array( $normalized ) && array() === $normalized ) {
-				continue;
-			}
-
-			$trimmed[ $key ] = $normalized;
-		}
-
-		return $is_list ? array_values( $trimmed ) : $trimmed;
-	}
-
-	/**
-	 * Schema for the consolidated content tool.
-	 *
-	 * @return array<string, mixed>
-	 */
-	private function get_content_tool_schema(): array {
-		return array(
-			'type'       => 'object',
-			'properties' => array(
-				'action'         => array(
-					'type'        => 'string',
-					'enum'        => array( 'get_posts', 'get_post', 'get_users', 'get_plugins', 'list', 'search', 'get', 'create', 'update_content', 'update_meta', 'delete', 'duplicate', 'get_settings', 'update_settings', 'get_seo', 'update_seo', 'add', 'update', 'remove', 'get_conditions', 'set_conditions', 'move', 'bulk_update' ),
-					'description' => __( 'Action to perform.', 'bricks-mcp' ),
-				),
-				'post_id'        => array( 'type' => 'integer' ),
-				'post_type'      => array( 'type' => 'string' ),
-				'posts_per_page' => array( 'type' => 'integer' ),
-				'paged'          => array( 'type' => 'integer' ),
-				'orderby'        => array( 'type' => 'string' ),
-				'order'          => array( 'type' => 'string', 'enum' => array( 'ASC', 'DESC' ) ),
-				'status'         => array( 'type' => 'string' ),
-				'role'           => array( 'type' => 'string' ),
-				'number'         => array( 'type' => 'integer' ),
-				'id'             => array( 'type' => 'integer' ),
-				'include_pii'    => array( 'type' => 'boolean' ),
-				'bricks_only'    => array( 'type' => 'boolean' ),
-				'search'         => array( 'type' => 'string' ),
-				'view'           => array( 'type' => 'string', 'enum' => array( 'detail', 'summary' ) ),
-				'title'          => array( 'type' => 'string' ),
-				'elements'       => array( 'type' => 'array' ),
-				'slug'           => array( 'type' => 'string' ),
-				'settings'       => array( 'type' => 'object' ),
-				'description'    => array( 'type' => 'string' ),
-				'robots_noindex' => array( 'type' => 'boolean' ),
-				'robots_nofollow' => array( 'type' => 'boolean' ),
-				'canonical'      => array( 'type' => 'string' ),
-				'og_title'       => array( 'type' => 'string' ),
-				'og_description' => array( 'type' => 'string' ),
-				'og_image'       => array( 'type' => 'string' ),
-				'twitter_title'  => array( 'type' => 'string' ),
-				'twitter_description' => array( 'type' => 'string' ),
-				'twitter_image'  => array( 'type' => 'string' ),
-				'focus_keyword'  => array( 'type' => 'string' ),
-				'element'        => array( 'type' => 'object' ),
-				'name'           => array( 'type' => 'string' ),
-				'element_id'     => array( 'type' => 'string' ),
-				'position'       => array( 'type' => 'integer' ),
-				'parent_id'      => array( 'type' => 'string' ),
-				'conditions'     => array( 'type' => 'array' ),
-				'target_parent_id' => array( 'type' => 'string' ),
-				'updates'        => array( 'type' => 'array' ),
-			),
-			'required'   => array( 'action' ),
-		);
-	}
-
-	/**
-	 * Schema for the consolidated design tool.
-	 *
-	 * @return array<string, mixed>
-	 */
-	private function get_design_tool_schema(): array {
-		return array(
-			'type'       => 'object',
-			'properties' => array(
-				'action'      => array(
-					'type'        => 'string',
-					'enum'        => array( 'list', 'get', 'create', 'update', 'delete', 'apply', 'remove', 'batch_create', 'batch_delete', 'import_css', 'list_categories', 'create_category', 'update_category', 'delete_category', 'export', 'import_json', 'add_color', 'update_color', 'delete_color', 'search', 'get_status', 'get_adobe_fonts', 'update_settings' ),
-					'description' => __( 'Action to perform.', 'bricks-mcp' ),
-				),
-				'domain'      => array(
-					'type'        => 'string',
-					'enum'        => array( 'global_class', 'theme_style', 'typography_scale', 'color_palette', 'global_variable', 'font' ),
-					'description' => __( 'Design subsystem to target.', 'bricks-mcp' ),
-				),
-				'class_name'  => array( 'type' => 'string' ),
-				'name'        => array( 'type' => 'string' ),
-				'styles'      => array( 'type' => 'object' ),
-				'color'       => array( 'type' => 'object' ),
-				'category'    => array( 'type' => 'string' ),
-				'post_id'     => array( 'type' => 'integer' ),
-				'element_ids' => array( 'type' => 'array' ),
-				'classes'     => array( 'type' => 'array' ),
-				'css'         => array( 'type' => 'string' ),
-				'category_name' => array( 'type' => 'string' ),
-				'category_id' => array( 'type' => 'string' ),
-				'search'      => array( 'type' => 'string' ),
-				'classes_data' => array( 'type' => 'object' ),
-				'style_id'    => array( 'type' => 'string' ),
-				'conditions'  => array( 'type' => 'array' ),
-				'active'      => array( 'type' => 'boolean' ),
-				'replace_section' => array( 'type' => 'boolean' ),
-				'hard_delete' => array( 'type' => 'boolean' ),
-				'scale_id'    => array( 'type' => 'string' ),
-				'palette_id'  => array( 'type' => 'string' ),
-				'colors'      => array( 'type' => 'array' ),
-				'color_id'    => array( 'type' => 'string' ),
-				'variable_id' => array( 'type' => 'string' ),
-				'value'       => array( 'type' => 'string' ),
-				'variables'   => array( 'type' => 'array' ),
-				'variable_ids' => array( 'type' => 'array' ),
-				'value_query' => array( 'type' => 'string' ),
-				'disable_google_fonts' => array( 'type' => 'boolean' ),
-				'webfont_loading' => array( 'type' => 'string' ),
-				'custom_fonts_preload' => array( 'type' => 'boolean' ),
-			),
-			'required'   => array( 'action', 'domain' ),
-		);
-	}
-
-	/**
-	 * Get alias map for legacy and hidden tool names.
-	 *
-	 * @return array<string, array{name: string, arguments: array<string, mixed>}>
-	 */
-	private function get_tool_aliases(): array {
-		return array(
-			'wordpress'              => array( 'name' => 'content', 'arguments' => array() ),
-			'page'                   => array( 'name' => 'content', 'arguments' => array() ),
-			'element'                => array( 'name' => 'content', 'arguments' => array() ),
-			'template_condition'     => array( 'name' => 'template', 'arguments' => array() ),
-			'template_taxonomy'      => array( 'name' => 'template', 'arguments' => array() ),
-			'global_class'           => array( 'name' => 'design', 'arguments' => array( 'domain' => 'global_class' ) ),
-			'theme_style'            => array( 'name' => 'design', 'arguments' => array( 'domain' => 'theme_style' ) ),
-			'typography_scale'       => array( 'name' => 'design', 'arguments' => array( 'domain' => 'typography_scale' ) ),
-			'color_palette'          => array( 'name' => 'design', 'arguments' => array( 'domain' => 'color_palette' ) ),
-			'global_variable'        => array( 'name' => 'design', 'arguments' => array( 'domain' => 'global_variable' ) ),
-			'font'                   => array( 'name' => 'design', 'arguments' => array( 'domain' => 'font' ) ),
-			'get_posts'              => array( 'name' => 'content', 'arguments' => array( 'action' => 'get_posts' ) ),
-			'get_post'               => array( 'name' => 'content', 'arguments' => array( 'action' => 'get_post' ) ),
-			'get_users'              => array( 'name' => 'content', 'arguments' => array( 'action' => 'get_users' ) ),
-			'get_plugins'            => array( 'name' => 'content', 'arguments' => array( 'action' => 'get_plugins' ) ),
-			'list_pages'             => array( 'name' => 'content', 'arguments' => array( 'action' => 'list' ) ),
-			'search_pages'           => array( 'name' => 'content', 'arguments' => array( 'action' => 'search' ) ),
-			'get_bricks_content'     => array( 'name' => 'content', 'arguments' => array( 'action' => 'get' ) ),
-			'create_bricks_page'     => array( 'name' => 'content', 'arguments' => array( 'action' => 'create' ) ),
-			'update_bricks_content'  => array( 'name' => 'content', 'arguments' => array( 'action' => 'update_content' ) ),
-			'update_page'            => array( 'name' => 'content', 'arguments' => array( 'action' => 'update_meta' ) ),
-			'delete_page'            => array( 'name' => 'content', 'arguments' => array( 'action' => 'delete' ) ),
-			'duplicate_page'         => array( 'name' => 'content', 'arguments' => array( 'action' => 'duplicate' ) ),
-			'get_page_settings'      => array( 'name' => 'content', 'arguments' => array( 'action' => 'get_settings' ) ),
-			'update_page_settings'   => array( 'name' => 'content', 'arguments' => array( 'action' => 'update_settings' ) ),
-			'add_element'            => array( 'name' => 'content', 'arguments' => array( 'action' => 'add' ) ),
-			'update_element'         => array( 'name' => 'content', 'arguments' => array( 'action' => 'update' ) ),
-			'remove_element'         => array( 'name' => 'content', 'arguments' => array( 'action' => 'remove' ) ),
-			'get_condition_types'    => array( 'name' => 'template', 'arguments' => array( 'action' => 'get_types' ) ),
-			'set_template_conditions' => array( 'name' => 'template', 'arguments' => array( 'action' => 'set' ) ),
-			'resolve_templates'      => array( 'name' => 'template', 'arguments' => array( 'action' => 'resolve' ) ),
-			'list_template_tags'     => array( 'name' => 'template', 'arguments' => array( 'action' => 'list_tags' ) ),
-			'list_template_bundles'  => array( 'name' => 'template', 'arguments' => array( 'action' => 'list_bundles' ) ),
-			'create_template_tag'    => array( 'name' => 'template', 'arguments' => array( 'action' => 'create_tag' ) ),
-			'create_template_bundle' => array( 'name' => 'template', 'arguments' => array( 'action' => 'create_bundle' ) ),
-			'delete_template_tag'    => array( 'name' => 'template', 'arguments' => array( 'action' => 'delete_tag' ) ),
-			'delete_template_bundle' => array( 'name' => 'template', 'arguments' => array( 'action' => 'delete_bundle' ) ),
-			'enable_bricks'         => array( 'name' => 'bricks', 'arguments' => array( 'action' => 'enable' ) ),
-			'disable_bricks'        => array( 'name' => 'bricks', 'arguments' => array( 'action' => 'disable' ) ),
-			'get_bricks_settings'   => array( 'name' => 'bricks', 'arguments' => array( 'action' => 'get_settings' ) ),
-			'get_breakpoints'       => array( 'name' => 'bricks', 'arguments' => array( 'action' => 'get_breakpoints' ) ),
-			'get_element_schemas'   => array( 'name' => 'bricks', 'arguments' => array( 'action' => 'get_element_schemas' ) ),
-			'list_templates'        => array( 'name' => 'template', 'arguments' => array( 'action' => 'list' ) ),
-			'get_template_content'  => array( 'name' => 'template', 'arguments' => array( 'action' => 'get' ) ),
-			'create_template'       => array( 'name' => 'template', 'arguments' => array( 'action' => 'create' ) ),
-			'update_template'       => array( 'name' => 'template', 'arguments' => array( 'action' => 'update' ) ),
-			'delete_template'       => array( 'name' => 'template', 'arguments' => array( 'action' => 'delete' ) ),
-			'duplicate_template'    => array( 'name' => 'template', 'arguments' => array( 'action' => 'duplicate' ) ),
-			'get_global_classes'    => array( 'name' => 'design', 'arguments' => array( 'domain' => 'global_class', 'action' => 'list' ) ),
-			'create_global_class'   => array( 'name' => 'design', 'arguments' => array( 'domain' => 'global_class', 'action' => 'create' ) ),
-			'update_global_class'   => array( 'name' => 'design', 'arguments' => array( 'domain' => 'global_class', 'action' => 'update' ) ),
-			'delete_global_class'   => array( 'name' => 'design', 'arguments' => array( 'domain' => 'global_class', 'action' => 'delete' ) ),
-			'apply_global_class'    => array( 'name' => 'design', 'arguments' => array( 'domain' => 'global_class', 'action' => 'apply' ) ),
-			'remove_global_class'   => array( 'name' => 'design', 'arguments' => array( 'domain' => 'global_class', 'action' => 'remove' ) ),
-			'batch_create_global_classes' => array( 'name' => 'design', 'arguments' => array( 'domain' => 'global_class', 'action' => 'batch_create' ) ),
-			'batch_delete_global_classes' => array( 'name' => 'design', 'arguments' => array( 'domain' => 'global_class', 'action' => 'batch_delete' ) ),
-			'import_classes_from_css' => array( 'name' => 'design', 'arguments' => array( 'domain' => 'global_class', 'action' => 'import_css' ) ),
-			'list_global_class_categories' => array( 'name' => 'design', 'arguments' => array( 'domain' => 'global_class', 'action' => 'list_categories' ) ),
-			'create_global_class_category' => array( 'name' => 'design', 'arguments' => array( 'domain' => 'global_class', 'action' => 'create_category' ) ),
-			'delete_global_class_category' => array( 'name' => 'design', 'arguments' => array( 'domain' => 'global_class', 'action' => 'delete_category' ) ),
-			'list_theme_styles'     => array( 'name' => 'design', 'arguments' => array( 'domain' => 'theme_style', 'action' => 'list' ) ),
-			'get_theme_style'       => array( 'name' => 'design', 'arguments' => array( 'domain' => 'theme_style', 'action' => 'get' ) ),
-			'create_theme_style'    => array( 'name' => 'design', 'arguments' => array( 'domain' => 'theme_style', 'action' => 'create' ) ),
-			'update_theme_style'    => array( 'name' => 'design', 'arguments' => array( 'domain' => 'theme_style', 'action' => 'update' ) ),
-			'delete_theme_style'    => array( 'name' => 'design', 'arguments' => array( 'domain' => 'theme_style', 'action' => 'delete' ) ),
-			'get_typography_scales' => array( 'name' => 'design', 'arguments' => array( 'domain' => 'typography_scale', 'action' => 'list' ) ),
-			'create_typography_scale' => array( 'name' => 'design', 'arguments' => array( 'domain' => 'typography_scale', 'action' => 'create' ) ),
-			'update_typography_scale' => array( 'name' => 'design', 'arguments' => array( 'domain' => 'typography_scale', 'action' => 'update' ) ),
-			'delete_typography_scale' => array( 'name' => 'design', 'arguments' => array( 'domain' => 'typography_scale', 'action' => 'delete' ) ),
-			'list_color_palettes'  => array( 'name' => 'design', 'arguments' => array( 'domain' => 'color_palette', 'action' => 'list' ) ),
-			'create_color_palette' => array( 'name' => 'design', 'arguments' => array( 'domain' => 'color_palette', 'action' => 'create' ) ),
-			'update_color_palette' => array( 'name' => 'design', 'arguments' => array( 'domain' => 'color_palette', 'action' => 'update' ) ),
-			'delete_color_palette' => array( 'name' => 'design', 'arguments' => array( 'domain' => 'color_palette', 'action' => 'delete' ) ),
-			'add_color_to_palette' => array( 'name' => 'design', 'arguments' => array( 'domain' => 'color_palette', 'action' => 'add_color' ) ),
-			'update_color_in_palette' => array( 'name' => 'design', 'arguments' => array( 'domain' => 'color_palette', 'action' => 'update_color' ) ),
-			'delete_color_from_palette' => array( 'name' => 'design', 'arguments' => array( 'domain' => 'color_palette', 'action' => 'delete_color' ) ),
-			'list_global_variables' => array( 'name' => 'design', 'arguments' => array( 'domain' => 'global_variable', 'action' => 'list' ) ),
-			'create_variable_category' => array( 'name' => 'design', 'arguments' => array( 'domain' => 'global_variable', 'action' => 'create_category' ) ),
-			'update_variable_category' => array( 'name' => 'design', 'arguments' => array( 'domain' => 'global_variable', 'action' => 'update_category' ) ),
-			'delete_variable_category' => array( 'name' => 'design', 'arguments' => array( 'domain' => 'global_variable', 'action' => 'delete_category' ) ),
-			'create_global_variable' => array( 'name' => 'design', 'arguments' => array( 'domain' => 'global_variable', 'action' => 'create' ) ),
-			'update_global_variable' => array( 'name' => 'design', 'arguments' => array( 'domain' => 'global_variable', 'action' => 'update' ) ),
-			'delete_global_variable' => array( 'name' => 'design', 'arguments' => array( 'domain' => 'global_variable', 'action' => 'delete' ) ),
-			'batch_create_global_variables' => array( 'name' => 'design', 'arguments' => array( 'domain' => 'global_variable', 'action' => 'batch_create' ) ),
-			'batch_delete_global_variables' => array( 'name' => 'design', 'arguments' => array( 'domain' => 'global_variable', 'action' => 'batch_delete' ) ),
-			'get_media_library'     => array( 'name' => 'media', 'arguments' => array( 'action' => 'list' ) ),
-			'search_unsplash'       => array( 'name' => 'media', 'arguments' => array( 'action' => 'search_unsplash' ) ),
-			'sideload_image'        => array( 'name' => 'media', 'arguments' => array( 'action' => 'sideload' ) ),
-			'set_featured_image'    => array( 'name' => 'media', 'arguments' => array( 'action' => 'set_featured' ) ),
-			'remove_featured_image' => array( 'name' => 'media', 'arguments' => array( 'action' => 'remove_featured' ) ),
-			'get_image_element_settings' => array( 'name' => 'media', 'arguments' => array( 'action' => 'get_image_settings' ) ),
-			'list_menus'            => array( 'name' => 'menu', 'arguments' => array( 'action' => 'list' ) ),
-			'get_menu'              => array( 'name' => 'menu', 'arguments' => array( 'action' => 'get' ) ),
-			'create_menu'           => array( 'name' => 'menu', 'arguments' => array( 'action' => 'create' ) ),
-			'update_menu'           => array( 'name' => 'menu', 'arguments' => array( 'action' => 'update' ) ),
-			'delete_menu'           => array( 'name' => 'menu', 'arguments' => array( 'action' => 'delete' ) ),
 		);
 	}
 
@@ -796,35 +230,17 @@ final class Router {
 	/**
 	 * Get available tools in MCP format.
 	 *
-	 * @return array<int, array<string, mixed>> Tools list.
+	 * @return array<int, array{name: string, description: string, inputSchema: array}> Tools list.
 	 */
 	public function get_available_tools(): array {
 		$tools = array();
 
 		foreach ( $this->tools as $tool ) {
-			if ( ! in_array( $tool['name'], self::VISIBLE_TOOL_NAMES, true ) ) {
-				continue;
-			}
-
-			$available_tool = array(
+			$tools[] = array(
 				'name'        => $tool['name'],
 				'description' => $tool['description'],
 				'inputSchema' => $tool['inputSchema'],
 			);
-
-			if ( isset( $tool['annotations'] ) ) {
-				$available_tool['annotations'] = $tool['annotations'];
-			}
-
-			if ( isset( $tool['outputSchema'] ) ) {
-				$available_tool['outputSchema'] = $tool['outputSchema'];
-			}
-
-			if ( isset( $tool['defaults'] ) ) {
-				$available_tool['defaults'] = $tool['defaults'];
-			}
-
-			$tools[] = $available_tool;
 		}
 
 		return $tools;
@@ -838,21 +254,6 @@ final class Router {
 	 * @return \WP_REST_Response The response.
 	 */
 	public function execute_tool( string $name, array $arguments ): \WP_REST_Response {
-		$resolved = $this->resolve_tool_call( $name, $arguments );
-
-		if ( is_wp_error( $resolved ) ) {
-			return Response::error(
-				'unknown_tool',
-				$resolved->get_error_message(),
-				404,
-				null,
-				__( 'Call tools/list to discover the supported canonical tool names and aliases.', 'bricks-mcp' )
-			);
-		}
-
-		$name      = $resolved['name'];
-		$arguments = $resolved['arguments'];
-
 		if ( ! isset( $this->tools[ $name ] ) ) {
 			return Response::error(
 				'unknown_tool',
@@ -891,15 +292,12 @@ final class Router {
 				return Response::tool_error( $result );
 			}
 
-			$result          = $this->format_tool_result( $name, $result, $arguments['response_format'] ?? 'verbose' );
-			$encoded_result  = is_string( $result ) ? $result : wp_json_encode( $result, JSON_PRETTY_PRINT );
-
 			return Response::success(
 				array(
 					'content' => array(
 						array(
 							'type' => 'text',
-							'text' => $encoded_result,
+							'text' => is_string( $result ) ? $result : wp_json_encode( $result, JSON_PRETTY_PRINT ),
 						),
 					),
 				)
@@ -925,7 +323,6 @@ final class Router {
 		$public_tools = array(
 			'get_builder_guide',
 			'wordpress', // Per-action checks handled inside tool_wordpress().
-			'content',   // Per-action checks handled inside content dispatcher.
 		);
 
 		if ( in_array( $tool_name, $public_tools, true ) ) {
@@ -1273,8 +670,8 @@ final class Router {
 					),
 					'view'                => array(
 						'type'        => 'string',
-						'enum'        => array( 'detail', 'summary' ),
-						'description' => __( 'Detail level (get: detail=full settings, summary=tree outline)', 'bricks-mcp' ),
+						'enum'        => array( 'detail', 'summary', 'visual' ),
+						'description' => __( 'Detail level (get: detail=full settings, summary=type counts + tree, visual=human-readable layout tree with element IDs, global classes, and content hints - use before editing existing pages)', 'bricks-mcp' ),
 					),
 					'title'               => array(
 						'type'        => 'string',
@@ -1341,6 +738,23 @@ final class Router {
 			),
 			array( $this, 'tool_page' )
 		);
+
+		// page_diagnose: scan existing pages for known issues before editing.
+$this->register_tool(
+    'page_diagnose',
+    __( 'Scan a Bricks page or template for issues before editing. Returns structured report with element ID, severity, type, message, and fix for each issue found. Checks: scripts missing <script> tags, %root% in _cssCustom, _maxWidth key, plain-string colors, invalid breakpoint keys, orphaned children, phantom _bricks_page_content_2 on header/footer templates, missing global classes, integer border values, and code elements with PHP that lack executeCode. Call this before editing any existing page. Read-only - makes no changes.', 'bricks-mcp' ),
+    array(
+        'type'       => 'object',
+        'properties' => array(
+            'post_id' => array(
+                'type'        => 'integer',
+                'description' => __( 'Post/page/template ID to diagnose (required)', 'bricks-mcp' ),
+            ),
+        ),
+        'required' => array( 'post_id' ),
+    ),
+    array( $this, 'tool_page_diagnose' )
+);
 
 		// Element consolidated tool (replaces add_element, update_element, remove_element).
 		$this->register_tool(
@@ -1416,13 +830,13 @@ final class Router {
 		// Template consolidated tool (replaces list_templates, get_template_content, create_template, update_template, delete_template, duplicate_template).
 		$this->register_tool(
 			'template',
-			__( 'Manage Bricks templates and targeting rules for a given site; requires an action and validates template-specific inputs.', 'bricks-mcp' ),
+			__( "Manage Bricks templates (headers, footers, sections, popups, etc.).\n\nActions:\n- list: List templates (optional: type, status, tag, bundle)\n- get: Get template with element content (requires: template_id)\n- create: Create template (requires: title, type; optional: elements, status, tags, bundles)\n- update: Update template metadata (requires: template_id; optional: title, status, type, tags, bundles)\n- delete: Delete template (requires: template_id)\n- duplicate: Duplicate template (requires: template_id; optional: title)\n- get_popup_settings: Get popup display settings (requires: template_id; template must be type popup)\n- set_popup_settings: Set popup display settings (requires: template_id, settings; template must be type popup)\n- export: Export template as Bricks-compatible JSON (requires: template_id; optional: include_classes)\n- import: Import template from JSON data (requires: template_data)\n- import_url: Import template from remote URL (requires: url)", 'bricks-mcp' ),
 			array(
 				'type'       => 'object',
 				'properties' => array(
 					'action'      => array(
 						'type'        => 'string',
-						'enum'        => array( 'list', 'get', 'create', 'update', 'delete', 'duplicate', 'get_popup_settings', 'set_popup_settings', 'export', 'import', 'import_url', 'get_types', 'set', 'resolve', 'list_tags', 'list_bundles', 'create_tag', 'create_bundle', 'delete_tag', 'delete_bundle' ),
+						'enum'        => array( 'list', 'get', 'create', 'update', 'delete', 'duplicate', 'get_popup_settings', 'set_popup_settings', 'export', 'import', 'import_url' ),
 						'description' => __( 'Action to perform', 'bricks-mcp' ),
 					),
 					'template_id' => array(
@@ -1472,14 +886,6 @@ final class Router {
 					'conditions'  => array(
 						'type'        => 'array',
 						'description' => __( 'Array of Bricks condition objects (create: optional)', 'bricks-mcp' ),
-					),
-					'post_id'     => array(
-						'type'        => 'integer',
-						'description' => __( 'Post ID for resolve action.', 'bricks-mcp' ),
-					),
-					'term_id'     => array(
-						'type'        => 'integer',
-						'description' => __( 'Template taxonomy term ID for delete_tag/delete_bundle.', 'bricks-mcp' ),
 					),
 					'settings'    => array(
 						'type'        => 'object',
@@ -1561,13 +967,6 @@ final class Router {
 				'required'   => array( 'action' ),
 			),
 			array( $this, 'tool_template_taxonomy' )
-		);
-
-		$this->register_tool(
-			'design',
-			__( 'Manage Bricks design tokens and style systems for a given site; requires a design domain and an action.', 'bricks-mcp' ),
-			$this->get_design_tool_schema(),
-			array( $this, 'tool_design' )
 		);
 
 		// Global class consolidated tool (replaces get_global_classes, create_global_class, update_global_class, delete_global_class, apply_global_class, remove_global_class, batch_create_global_classes, batch_delete_global_classes, import_classes_from_css, list_global_class_categories, create_global_class_category, delete_global_class_category).
@@ -2171,51 +1570,6 @@ final class Router {
 				)
 			),
 		};
-	}
-
-	/**
-	 * Tool: Content dispatcher — routes to WordPress, page, and element operations.
-	 *
-	 * @param array<string, mixed> $args Tool arguments including action.
-	 * @return array<string, mixed>|\WP_Error
-	 */
-	public function tool_content( array $args ): array|\WP_Error {
-		$action = $args['action'] ?? '';
-
-		$read_actions = array( 'get_posts', 'get_post', 'get_users', 'get_plugins' );
-		$required_cap = in_array( $action, $read_actions, true ) ? null : 'manage_options';
-
-		if ( null !== $required_cap && ! current_user_can( $required_cap ) ) {
-			return new \WP_Error(
-				'bricks_mcp_forbidden',
-				sprintf(
-					/* translators: %s: Capability name */
-					__( 'You do not have the required capability (%s) to use this action.', 'bricks-mcp' ),
-					$required_cap
-				)
-			);
-		}
-
-		if ( in_array( $action, array( 'get_posts', 'get_post', 'get_users', 'get_plugins' ), true ) ) {
-			return $this->tool_wordpress( $args );
-		}
-
-		if ( in_array( $action, array( 'list', 'search', 'get', 'create', 'update_content', 'update_meta', 'delete', 'duplicate', 'get_settings', 'update_settings', 'get_seo', 'update_seo' ), true ) ) {
-			return $this->tool_page( $args );
-		}
-
-		if ( in_array( $action, array( 'add', 'update', 'remove', 'get_conditions', 'set_conditions', 'move', 'bulk_update' ), true ) ) {
-			return $this->tool_element( $args );
-		}
-
-		return new \WP_Error(
-			'invalid_action',
-			sprintf(
-				/* translators: %s: Action name */
-				__( 'Invalid action "%s" for content tool.', 'bricks-mcp' ),
-				$action
-			)
-		);
 	}
 
 	/**
@@ -3894,6 +3248,13 @@ final class Router {
 			);
 		}
 
+		if ( 'visual' === $view ) {
+			return array(
+				'metadata' => $metadata,
+				'visual'   => $this->bricks_service->get_visual_layout( $post_id ),
+			);
+		}
+
 		return array(
 			'metadata' => $metadata,
 			'elements' => $this->bricks_service->get_elements( $post_id ),
@@ -4606,20 +3967,11 @@ final class Router {
 			'export'              => $this->tool_export_template( $args ),
 			'import'              => $this->tool_import_template( $args ),
 			'import_url'          => $this->tool_import_template_url( $args ),
-			'get_types'           => $this->tool_get_condition_types( $args ),
-			'set'                 => $this->tool_set_template_conditions( $args ),
-			'resolve'             => $this->tool_resolve_templates( $args ),
-			'list_tags'           => $this->tool_list_template_tags( $args ),
-			'list_bundles'        => $this->tool_list_template_bundles( $args ),
-			'create_tag'          => $this->tool_create_template_tag( $args ),
-			'create_bundle'       => $this->tool_create_template_bundle( $args ),
-			'delete_tag'          => $this->tool_delete_template_tag( $args ),
-			'delete_bundle'       => $this->tool_delete_template_bundle( $args ),
 			default               => new \WP_Error(
 				'invalid_action',
 				sprintf(
 					/* translators: %s: Action name */
-					__( 'Invalid action "%s". Valid actions: list, get, create, update, delete, duplicate, get_popup_settings, set_popup_settings, export, import, import_url, get_types, set, resolve, list_tags, list_bundles, create_tag, create_bundle, delete_tag, delete_bundle', 'bricks-mcp' ),
+					__( 'Invalid action "%s". Valid actions: list, get, create, update, delete, duplicate, get_popup_settings, set_popup_settings, export, import, import_url', 'bricks-mcp' ),
 					$action
 				)
 			),
@@ -4789,33 +4141,6 @@ final class Router {
 					/* translators: %s: Action name */
 					__( 'Invalid action "%s". Valid actions: list_tags, list_bundles, create_tag, create_bundle, delete_tag, delete_bundle', 'bricks-mcp' ),
 					$action
-				)
-			),
-		};
-	}
-
-	/**
-	 * Tool: Design dispatcher — routes to the appropriate Bricks design subsystem.
-	 *
-	 * @param array<string, mixed> $args Tool arguments including action and domain.
-	 * @return array<string, mixed>|\WP_Error Result data or error.
-	 */
-	public function tool_design( array $args ): array|\WP_Error {
-		$domain = $args['domain'] ?? '';
-
-		return match ( $domain ) {
-			'global_class'     => $this->tool_global_class( $args ),
-			'theme_style'      => $this->tool_theme_style( $args ),
-			'typography_scale' => $this->tool_typography_scale( $args ),
-			'color_palette'    => $this->tool_color_palette( $args ),
-			'global_variable'  => $this->tool_global_variable( $args ),
-			'font'             => $this->tool_font( $args ),
-			default            => new \WP_Error(
-				'invalid_domain',
-				sprintf(
-					/* translators: %s: Domain name */
-					__( 'Invalid design domain "%s". Valid domains: global_class, theme_style, typography_scale, color_palette, global_variable, font', 'bricks-mcp' ),
-					(string) $domain
 				)
 			),
 		};
@@ -10034,6 +9359,210 @@ final class Router {
 			'total_skipped' => count( $skipped ),
 			'total_failed'  => count( $failed ),
 			'next_steps'    => 'Use template:get to view and customize individual templates. Use page:update_content or element:add/update to modify elements. Use get_builder_guide(section="woocommerce") for patterns.',
+		);
+	}
+	
+	/**
+	 * Tool: Diagnose a Bricks page for known issues before editing.
+	 *
+	 * @param array<string, mixed> $args Tool arguments.
+	 * @return array<string, mixed>|\WP_Error Diagnosis report or error.
+	 */
+	public function tool_page_diagnose( array $args ): array|\WP_Error {
+		$bricks_error = $this->require_bricks();
+		if ( null !== $bricks_error ) {
+			return $bricks_error;
+		}
+
+		if ( empty( $args['post_id'] ) ) {
+			return new \WP_Error( 'missing_post_id', __( 'post_id is required.', 'bricks-mcp' ) );
+		}
+
+		$post_id = (int) $args['post_id'];
+		$post    = get_post( $post_id );
+
+		if ( ! $post ) {
+			return new \WP_Error( 'post_not_found', sprintf( __( 'Post %d not found.', 'bricks-mcp' ), $post_id ) );
+		}
+
+		$elements = $this->bricks_service->get_elements( $post_id );
+		$issues   = array();
+
+		$id_map = array();
+		foreach ( $elements as $el ) {
+			$id_map[ $el['id'] ] = true;
+		}
+
+		$global_classes   = $this->bricks_service->get_global_classes();
+		$global_class_ids = array();
+		foreach ( $global_classes as $gc ) {
+			$global_class_ids[ $gc['id'] ?? '' ] = true;
+		}
+
+		$template_type    = get_post_meta( $post_id, '_bricks_template_type', true );
+		$is_header_footer = in_array( $template_type, array( 'header', 'footer' ), true );
+
+		if ( $is_header_footer ) {
+			$phantom = get_post_meta( $post_id, '_bricks_page_content_2', true );
+			if ( ! empty( $phantom ) ) {
+				$issues[] = array(
+					'element_id' => null,
+					'severity'   => 'error',
+					'type'       => 'phantom_content',
+					'message'    => ucfirst( $template_type ) . ' template has phantom _bricks_page_content_2 that renders a ghost section below the real template.',
+					'fix'        => 'Run: delete_post_meta( ' . $post_id . ", '_bricks_page_content_2' )",
+				);
+			}
+		}
+
+		$valid_bps = array( 'tablet_landscape', 'tablet_portrait', 'mobile_landscape', 'mobile_portrait' );
+
+		foreach ( $elements as $el ) {
+			$el_id    = $el['id'] ?? 'unknown';
+			$el_name  = $el['name'] ?? 'unknown';
+			$settings = $el['settings'] ?? array();
+
+			foreach ( array( 'customScriptsBodyFooter', 'customScriptsBodyHeader', 'customScriptsHeader' ) as $sf ) {
+				if ( ! empty( $settings[ $sf ] ) && strpos( $settings[ $sf ], '<script' ) === false ) {
+					$issues[] = array(
+						'element_id' => $el_id,
+						'severity'   => 'error',
+						'type'       => 'script_missing_tags',
+						'message'    => "Element {$el_id} ({$el_name}): {$sf} has JS without <script> tags - will print as visible text.",
+						'fix'        => 'Wrap the content in <script>...</script> tags.',
+					);
+				}
+			}
+
+			if ( 'code' === $el_name && ! empty( $settings['code'] ) && strpos( $settings['code'], '<?php' ) !== false && empty( $settings['executeCode'] ) ) {
+				$issues[] = array(
+					'element_id' => $el_id,
+					'severity'   => 'warning',
+					'type'       => 'php_execute_disabled',
+					'message'    => "Element {$el_id}: code element contains PHP but executeCode is not enabled.",
+					'fix'        => 'Set settings.executeCode = true on this element.',
+				);
+			}
+
+			if ( ! empty( $settings['_cssCustom'] ) && strpos( $settings['_cssCustom'], '%root%' ) !== false ) {
+				$issues[] = array(
+					'element_id' => $el_id,
+					'severity'   => 'error',
+					'type'       => 'root_placeholder',
+					'message'    => "Element {$el_id} ({$el_name}): _cssCustom uses %root% which only works in the visual editor, not via API.",
+					'fix'        => "Replace %root% with #brxe-{$el_id}",
+				);
+			}
+
+			if ( array_key_exists( '_maxWidth', $settings ) ) {
+				$issues[] = array(
+					'element_id' => $el_id,
+					'severity'   => 'error',
+					'type'       => 'wrong_key_maxwidth',
+					'message'    => "Element {$el_id} ({$el_name}): uses _maxWidth which is silently ignored.",
+					'fix'        => 'Rename _maxWidth to _widthMax.',
+				);
+			}
+
+			foreach ( array( '_background', 'color', 'iconColor' ) as $ck ) {
+				if ( isset( $settings[ $ck ] ) && is_string( $settings[ $ck ] ) && preg_match( '/^#[0-9a-fA-F]{3,8}$/', $settings[ $ck ] ) ) {
+					$issues[] = array(
+						'element_id' => $el_id,
+						'severity'   => 'warning',
+						'type'       => 'plain_string_color',
+						'message'    => "Element {$el_id} ({$el_name}): {$ck} is a plain hex string. Bricks expects {\"hex\":\"#value\"} objects.",
+						'fix'        => "Change {$ck} to {\"hex\":\"{$settings[$ck]}\"}.",
+					);
+				}
+			}
+
+			foreach ( array_keys( $settings ) as $key ) {
+    if ( strpos( $key, ':' ) !== false ) {
+        $bp = explode( ':', $key, 2 )[1] ?? '';
+        // Skip pseudo states — they are not breakpoints.
+        $valid_pseudo = array( 'hover', 'focus', 'active', 'visited', 'placeholder', 'before', 'after' );
+        if ( in_array( $bp, $valid_pseudo, true ) ) {
+            continue;
+        }
+        if ( ! empty( $bp ) && ! in_array( $bp, $valid_bps, true ) ) {
+            $issues[] = array(
+                'element_id' => $el_id,
+                'severity'   => 'warning',
+                'type'       => 'invalid_breakpoint',
+                'message'    => "Element {$el_id}: setting key '{$key}' uses unknown breakpoint '{$bp}'.",
+                'fix'        => 'Valid breakpoints: tablet_landscape, tablet_portrait, mobile_landscape, mobile_portrait.',
+            );
+        }
+    }
+}
+			foreach ( ( $el['children'] ?? array() ) as $child_id ) {
+				if ( ! isset( $id_map[ $child_id ] ) ) {
+					$issues[] = array(
+						'element_id' => $el_id,
+						'severity'   => 'error',
+						'type'       => 'orphaned_child',
+						'message'    => "Element {$el_id}: child ID '{$child_id}' does not exist in the page.",
+						'fix'        => "Remove '{$child_id}' from element {$el_id} children array.",
+					);
+				}
+			}
+
+			if ( ! empty( $settings['_cssClasses'] ) ) {
+				$used = is_array( $settings['_cssClasses'] ) ? $settings['_cssClasses'] : explode( ' ', $settings['_cssClasses'] );
+				foreach ( $used as $cid ) {
+					$cid = trim( $cid );
+					if ( ! empty( $cid ) && ! isset( $global_class_ids[ $cid ] ) ) {
+						$issues[] = array(
+							'element_id' => $el_id,
+							'severity'   => 'warning',
+							'type'       => 'missing_global_class',
+							'message'    => "Element {$el_id}: references global class '{$cid}' which does not exist.",
+							'fix'        => 'Create the class via global_class:create or remove the reference.',
+						);
+					}
+				}
+			}
+
+			if ( ! empty( $settings['_border'] ) && is_array( $settings['_border'] ) ) {
+				if ( isset( $settings['_border']['width'] ) && is_int( $settings['_border']['width'] ) ) {
+					$w        = $settings['_border']['width'];
+					$issues[] = array(
+						'element_id' => $el_id,
+						'severity'   => 'warning',
+						'type'       => 'integer_border',
+						'message'    => "Element {$el_id}: _border.width is integer {$w}, Bricks expects a CSS string like '{$w}px'.",
+						'fix'        => "Change _border.width from {$w} to '{$w}px'.",
+					);
+				}
+				if ( ! empty( $settings['_border']['radius'] ) && is_array( $settings['_border']['radius'] ) ) {
+					foreach ( $settings['_border']['radius'] as $side => $val ) {
+						if ( is_int( $val ) ) {
+							$issues[] = array(
+								'element_id' => $el_id,
+								'severity'   => 'warning',
+								'type'       => 'integer_border_radius',
+								'message'    => "Element {$el_id}: _border.radius.{$side} is integer {$val}, expects CSS string like '{$val}px'.",
+								'fix'        => "Change _border.radius.{$side} from {$val} to '{$val}px'.",
+							);
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		$errors   = count( array_filter( $issues, fn( $i ) => 'error' === $i['severity'] ) );
+		$warnings = count( array_filter( $issues, fn( $i ) => 'warning' === $i['severity'] ) );
+
+		return array(
+			'post_id'       => $post_id,
+			'title'         => $post->post_title,
+			'element_count' => count( $elements ),
+			'issue_count'   => count( $issues ),
+			'error_count'   => $errors,
+			'warning_count' => $warnings,
+			'status'        => 0 === count( $issues ) ? 'clean' : ( $errors > 0 ? 'errors' : 'warnings' ),
+			'issues'        => $issues,
 		);
 	}
 }

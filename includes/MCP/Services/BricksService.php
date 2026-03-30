@@ -2362,7 +2362,144 @@ class BricksService {
 		return $this->save_elements( $post_id, $elements );
 	}
 
+	
 	/**
+	 * Get a human-readable visual layout tree for a page.
+	 *
+	 * Returns a nested tree with element IDs, names, labels, depth,
+	 * global classes, text previews, and background color hints.
+	 * Use this with view=visual on page:get to understand existing page structure before editing.
+	 *
+	 * @param int $post_id The post ID.
+	 * @return array<string, mixed> Visual layout tree.
+	 */
+	public function get_visual_layout( int $post_id ): array {
+		$elements = $this->get_elements( $post_id );
+
+		if ( empty( $elements ) ) {
+			return [
+				'tree'  => [],
+				'total' => 0,
+			];
+		}
+
+		// Build ID → element map and children map.
+		$el_map      = [];
+		$children_of = [];
+
+		foreach ( $elements as $el ) {
+			$id = $el['id'] ?? '';
+			if ( ''  === $id ) {
+				continue;
+			}
+			$el_map[ $id ] = $el;
+		}
+
+		foreach ( $elements as $el ) {
+			$id     = $el['id'] ?? '';
+			$parent = $el['parent'] ?? 0;
+			if ( ''  === $id ) {
+				continue;
+			}
+			$parent_key = ( 0 === $parent || '0' === $parent ) ? '__root__' : (string) $parent;
+			$children_of[ $parent_key ][] = $id;
+		}
+
+		// Build tree from root elements.
+		$root_ids = $children_of['__root__'] ?? [];
+		$tree     = [];
+
+		foreach ( $root_ids as $root_id ) {
+			if ( isset( $el_map[ $root_id ] ) ) {
+				$tree[] = $this->build_visual_node( $el_map[ $root_id ], $el_map, $children_of, 0 );
+			}
+		}
+
+		return [
+			'tree'  => $tree,
+			'total' => count( $elements ),
+		];
+	}
+
+	/**
+	 * Build a single visual node for the layout tree.
+	 *
+	 * @param array<string, mixed>              $el          The element data.
+	 * @param array<string, array<string,mixed>> $el_map      Map of all elements by ID.
+	 * @param array<string, string[]>            $children_of Map of parent ID to child IDs.
+	 * @param int                               $depth       Current nesting depth.
+	 * @return array<string, mixed> Visual node.
+	 */
+	private function build_visual_node( array $el, array $el_map, array $children_of, int $depth ): array {
+		$id       = $el['id'] ?? '';
+		$name     = $el['name'] ?? 'unknown';
+		$settings = $el['settings'] ?? [];
+
+		// Label: prefer _label setting, fall back to element name.
+		$label = $settings['_label'] ?? $name;
+
+		// Global classes applied to this element.
+		$css_classes = $settings['_cssClasses'] ?? [];
+		if ( is_string( $css_classes ) ) {
+			$css_classes = array_filter( array_map( 'trim', explode( ' ', $css_classes ) ) );
+		}
+
+		// Text preview from common text-bearing settings (max 80 chars).
+		$text_preview = null;
+		foreach ( [ 'text', 'content', 'heading', 'label' ] as $tk ) {
+			if ( ! empty( $settings[ $tk ] ) && is_string( $settings[ $tk ] ) ) {
+				$raw          = wp_strip_all_tags( $settings[ $tk ] );
+				$text_preview = mb_strlen( $raw ) > 80 ? mb_substr( $raw, 0, 77 ) . '...' : $raw;
+				break;
+			}
+		}
+
+		// Background color hint.
+		$bg_color = null;
+		$bg       = $settings['_background'] ?? [];
+		if ( is_array( $bg ) ) {
+			$color = $bg['color'] ?? [];
+			if ( is_array( $color ) ) {
+				$bg_color = $color['hex'] ?? ( $color['raw'] ?? null );
+			} elseif ( is_string( $color ) ) {
+				$bg_color = $color;
+			}
+		}
+
+		$node = [
+			'id'    => $id,
+			'name'  => $name,
+			'label' => $label,
+			'depth' => $depth,
+		];
+
+		if ( ! empty( $css_classes ) ) {
+			$node['global_classes'] = array_values( $css_classes );
+		}
+
+		if ( null !== $text_preview ) {
+			$node['text_preview'] = $text_preview;
+		}
+
+		if ( null !== $bg_color ) {
+			$node['bg_color'] = $bg_color;
+		}
+
+		// Recurse into children.
+		$child_ids = $children_of[ $id ] ?? [];
+		if ( ! empty( $child_ids ) ) {
+			$node['children'] = [];
+			foreach ( $child_ids as $cid ) {
+				if ( isset( $el_map[ $cid ] ) ) {
+					$node['children'][] = $this->build_visual_node( $el_map[ $cid ], $el_map, $children_of, $depth + 1 );
+				}
+			}
+		}
+
+		return $node;
+	}
+
+/**
 	 * Get a tree outline summary of a page's Bricks elements.
 	 *
 	 * Returns element names/IDs in tree structure with type counts.
