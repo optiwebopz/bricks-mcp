@@ -112,6 +112,7 @@ final class StreamableHttpHandler {
 		if ( empty( $content_type ) || false === strpos( $content_type, 'application/json' ) ) {
 			status_header( 415 );
 			header( 'Content-Type: application/json' );
+			header( 'Connection: close' );
 			echo wp_json_encode(
 				$this->jsonrpc_error( null, self::INVALID_REQUEST, 'Unsupported Media Type' )
 			);
@@ -119,10 +120,12 @@ final class StreamableHttpHandler {
 		}
 
 		// Check body size before parsing.
-		$body = $request->get_body();
-		if ( strlen( $body ) > self::MAX_BODY_SIZE ) {
+		$body     = $request->get_body();
+		$max_body = (int) apply_filters( 'bricks_mcp_max_body_size', self::MAX_BODY_SIZE );
+		if ( strlen( $body ) > $max_body ) {
 			status_header( 413 );
 			header( 'Content-Type: application/json' );
+			header( 'Connection: close' );
 			echo wp_json_encode(
 				$this->jsonrpc_error( null, self::INVALID_REQUEST, 'Request body too large' )
 			);
@@ -190,18 +193,32 @@ final class StreamableHttpHandler {
 	}
 
 	/**
-	 * Handle GET requests (stub SSE endpoint).
+	 * Handle GET requests (persistent SSE keepalive loop).
 	 *
-	 * Emits SSE headers and immediately closes the stream.
-	 * Per design decision: no server-initiated messages are sent.
+	 * Emits SSE keepalive comments every 25 seconds to keep the connection open
+	 * through PHP-FPM idle timeouts. Checks for client disconnects via
+	 * connection_aborted() before and after each sleep interval, exiting cleanly
+	 * within one keepalive interval when the client disconnects.
 	 *
 	 * @param \WP_REST_Request $request The REST request.
-	 * @return void Outputs SSE headers and exits.
+	 * @return void Outputs SSE keepalive stream and exits.
 	 */
 	public function handle_get( \WP_REST_Request $request ): void { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found
-		header( 'Content-Type: text/event-stream' );
-		header( 'Cache-Control: no-cache' );
-		header( 'X-Accel-Buffering: no' );
+		$this->emit_sse_headers();
+		while ( true ) {
+			if ( connection_aborted() ) {
+				break;
+			}
+			echo ": keepalive\n\n";
+			if ( ob_get_level() > 0 ) {
+				ob_flush();
+			}
+			flush();
+			sleep( 25 );
+			if ( connection_aborted() ) {
+				break;
+			}
+		}
 		exit;
 	}
 
@@ -376,7 +393,11 @@ final class StreamableHttpHandler {
 	/**
 	 * Emit SSE response headers.
 	 *
-	 * Flushes output buffers and sets headers required for Server-Sent Events.
+	 * Flushes output buffers, extends PHP execution time via the filterable
+	 * bricks_mcp_sse_timeout filter (default 1800 seconds), enables
+	 * connection_aborted() polling via ignore_user_abort( true ), sets SSE
+	 * headers, and registers a shutdown function to emit a stream-end comment
+	 * so proxies know the stream closed unexpectedly.
 	 *
 	 * @return void
 	 */
@@ -385,10 +406,24 @@ final class StreamableHttpHandler {
 			ob_end_flush();
 		}
 
+		$timeout = (int) apply_filters( 'bricks_mcp_sse_timeout', 1800 );
+		set_time_limit( $timeout );
+		ignore_user_abort( true );
+
 		header( 'Content-Type: text/event-stream' );
 		header( 'Cache-Control: no-cache' );
 		header( 'Connection: keep-alive' );
 		header( 'X-Accel-Buffering: no' );
+
+		register_shutdown_function(
+			function () {
+				echo ": stream-end\n\n";
+				if ( ob_get_level() > 0 ) {
+					ob_flush();
+				}
+				flush();
+			}
+		);
 	}
 
 	/**
