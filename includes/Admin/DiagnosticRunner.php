@@ -17,6 +17,7 @@ use BricksMCP\Admin\Checks\HostingProviderCheck;
 use BricksMCP\Admin\Checks\HttpsCheck;
 use BricksMCP\Admin\Checks\McpEndpointCheck;
 use BricksMCP\Admin\Checks\PermalinkStructureCheck;
+use BricksMCP\Admin\Checks\PhpTimeoutCheck;
 use BricksMCP\Admin\Checks\RestApiReachableCheck;
 use BricksMCP\Admin\Checks\SecurityPluginCheck;
 
@@ -68,6 +69,7 @@ class DiagnosticRunner {
 		$this->register( new HostingProviderCheck() );
 		$this->register( new BricksActiveCheck() );
 		$this->register( new McpEndpointCheck() );
+		$this->register( new PhpTimeoutCheck() );
 
 		/**
 		 * Filter the registered diagnostic checks.
