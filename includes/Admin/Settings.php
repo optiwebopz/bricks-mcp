@@ -484,6 +484,25 @@ final class Settings {
 			JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
 		);
 
+		// Build Claude Desktop config snippet.
+		$desktop_config = json_encode(
+			[
+				'mcpServers' => [
+					'bricks-mcp' => [
+						'command' => 'npx',
+						'args'    => [
+							'-y',
+							'mcp-remote@latest',
+							$mcp_url,
+							'--header',
+							'Authorization: Basic YOUR_BASE64_AUTH_STRING',
+						],
+					],
+				],
+			],
+			JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
+		);
+
 		?>
 		<div class="bricks-mcp-config-section">
 			<h2><?php esc_html_e( 'MCP Configuration', 'bricks-mcp' ); ?></h2>
@@ -532,6 +551,14 @@ final class Settings {
 							<?php esc_html_e( 'Copy to Clipboard', 'bricks-mcp' ); ?>
 						</button>
 					</div>
+
+					<h4><?php esc_html_e( 'Claude Desktop (JSON config):', 'bricks-mcp' ); ?></h4>
+					<div class="bricks-mcp-code-wrap">
+						<pre><code id="bricks-mcp-generated-desktop-config"></code></pre>
+						<button type="button" class="button bricks-mcp-copy-btn" data-target="bricks-mcp-generated-desktop-config">
+							<?php esc_html_e( 'Copy to Clipboard', 'bricks-mcp' ); ?>
+						</button>
+					</div>
 				</div>
 			</div>
 
@@ -544,6 +571,9 @@ final class Settings {
 					</button>
 					<button type="button" role="tab" id="bricks-mcp-tab-gemini" data-tab="gemini" aria-selected="false" aria-controls="bricks-mcp-panel-gemini" tabindex="-1">
 						<?php esc_html_e( 'Gemini', 'bricks-mcp' ); ?>
+					</button>
+					<button type="button" role="tab" id="bricks-mcp-tab-claude-desktop" data-tab="claude-desktop" aria-selected="false" aria-controls="bricks-mcp-panel-claude-desktop" tabindex="-1">
+						<?php esc_html_e( 'Claude Desktop', 'bricks-mcp' ); ?>
 					</button>
 				</div>
 
@@ -582,6 +612,32 @@ final class Settings {
 					</div>
 					<p class="description bricks-mcp-tab-description">
 						<?php esc_html_e( 'Add this to your ~/.gemini/settings.json file.', 'bricks-mcp' ); ?>
+					</p>
+					<p class="description">
+						<?php
+						echo wp_kses(
+							__( 'Replace <code>YOUR_BASE64_AUTH_STRING</code> with the Base64-encoded value of <code>username:app_password</code>. Or use the <strong>Generate Setup Command</strong> button above for a ready-to-paste config.', 'bricks-mcp' ),
+							[
+								'code'   => [],
+								'strong' => [],
+							]
+						);
+						?>
+					</p>
+				</div>
+
+				<!-- Claude Desktop Panel -->
+				<div role="tabpanel" id="bricks-mcp-panel-claude-desktop" aria-labelledby="bricks-mcp-tab-claude-desktop" data-panel="claude-desktop" style="display:none;">
+					<div class="bricks-mcp-code-wrap">
+						<pre><code id="bricks-mcp-desktop-config"><?php echo esc_html( $desktop_config ); ?></code></pre>
+						<button type="button" class="button bricks-mcp-copy-btn" data-target="bricks-mcp-desktop-config">
+							<?php esc_html_e( 'Copy to Clipboard', 'bricks-mcp' ); ?>
+						</button>
+					</div>
+					<p class="description bricks-mcp-tab-description">
+						<?php esc_html_e( 'Add this to your Claude Desktop config file:', 'bricks-mcp' ); ?>
+						<code>~/Library/Application Support/Claude/claude_desktop_config.json</code> (Mac) or
+						<code>%APPDATA%\\Claude\\claude_desktop_config.json</code> (Windows)
 					</p>
 					<p class="description">
 						<?php

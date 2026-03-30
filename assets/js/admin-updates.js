@@ -317,6 +317,7 @@
 		var commandEl = document.getElementById('bricks-mcp-generated-command');
 		var claudeConfigEl = document.getElementById('bricks-mcp-generated-claude-config');
 		var geminiConfigEl = document.getElementById('bricks-mcp-generated-gemini-config');
+		var desktopConfigEl = document.getElementById('bricks-mcp-generated-desktop-config');
 
 		if (!btn) {
 			return;
@@ -354,6 +355,9 @@
 					}
 					if (geminiConfigEl) {
 						geminiConfigEl.textContent = data.data.gemini_config;
+					}
+					if (desktopConfigEl) {
+						desktopConfigEl.textContent = data.data.desktop_config;
 					}
 
 					// Show the result container.
