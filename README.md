@@ -27,10 +27,16 @@ Bricks MCP is a WordPress plugin that implements an [MCP (Model Context Protocol
 
 ## Installation
 
+No Composer required. The plugin ships its own PSR-4 autoloader (`includes/Autoloader.php`) that maps the `BricksMCP\` namespace to the `includes/` directory. Simply upload and activate -- no build step needed.
+
 1. Download the latest release from [GitHub Releases](https://github.com/cristianuibar/bricks-mcp/releases)
 2. Upload to your WordPress site via Plugins > Add New > Upload Plugin
 3. Activate the plugin
 4. Go to Settings > Bricks MCP to configure
+
+### LocalWP / Manual Server Setup
+
+If you run LocalWP or a custom server stack, PHP and Nginx may need configuration changes for stable MCP connections (SSE streaming requires longer timeouts and unbuffered responses). See the [LocalWP Setup Guide](docs/LOCALWP_SETUP.md) for step-by-step instructions.
 
 ## Connecting Your AI Tool
 
