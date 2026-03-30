@@ -23,6 +23,15 @@ jobs:
         if: hashFiles('composer.json') != ''
         run: composer install --no-dev --optimize-autoloader --no-interaction
 
+      - name: Stamp version from tag
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "Stamping version: $VERSION"
+          sed -i "s/^ \* Version:.*/ * Version:           $VERSION/" bricks-mcp.php
+          sed -i "s/define( 'BRICKS_MCP_VERSION', '.*' );/define( 'BRICKS_MCP_VERSION', '$VERSION' );/" bricks-mcp.php
+          grep 'Version:' bricks-mcp.php | head -1
+          grep 'BRICKS_MCP_VERSION' bricks-mcp.php | head -1
+
       - name: Build plugin ZIP
         run: |
           VERSION=${GITHUB_REF_NAME#v}
