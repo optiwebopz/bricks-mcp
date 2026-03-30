@@ -104,4 +104,127 @@ final class StreamableHttpHandlerTest extends TestCase {
 		$this->assertSame( -32600, $result['error']['code'] );
 		$this->assertSame( 'Request body too large', $result['error']['message'] );
 	}
+
+	// -------------------------------------------------------------------------
+	// CONN-01 through CONN-04 source-assertion tests (Phase 39).
+	// These tests read the method source via ReflectionMethod and assert that
+	// the required function calls and patterns are present. This pattern is used
+	// because the methods call exit() and produce output, which cannot be tested
+	// directly under beStrictAboutOutputDuringTests="true".
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Helper: extract source code of a method as a string.
+	 *
+	 * @param string $method_name Method name in StreamableHttpHandler.
+	 * @return string The raw PHP source lines of the method.
+	 */
+	private function get_method_source( string $method_name ): string {
+		$ref   = new \ReflectionMethod( StreamableHttpHandler::class, $method_name );
+		$file  = file( (string) $ref->getFileName() );
+		$start = $ref->getStartLine() - 1;
+		$end   = $ref->getEndLine();
+		return implode( '', array_slice( $file, $start, $end - $start ) );
+	}
+
+	/**
+	 * Test: emit_sse_headers() source contains set_time_limit call (CONN-02).
+	 *
+	 * @return void
+	 */
+	public function test_emit_sse_headers_contains_set_time_limit(): void {
+		$source = $this->get_method_source( 'emit_sse_headers' );
+		$this->assertStringContainsString( 'set_time_limit', $source );
+	}
+
+	/**
+	 * Test: emit_sse_headers() source contains ignore_user_abort( true ) (CONN-03).
+	 *
+	 * @return void
+	 */
+	public function test_emit_sse_headers_contains_ignore_user_abort(): void {
+		$source = $this->get_method_source( 'emit_sse_headers' );
+		$this->assertStringContainsString( 'ignore_user_abort( true )', $source );
+	}
+
+	/**
+	 * Test: emit_sse_headers() source contains bricks_mcp_sse_timeout filter (CONN-02).
+	 *
+	 * @return void
+	 */
+	public function test_emit_sse_headers_contains_sse_timeout_filter(): void {
+		$source = $this->get_method_source( 'emit_sse_headers' );
+		$this->assertStringContainsString( 'bricks_mcp_sse_timeout', $source );
+	}
+
+	/**
+	 * Test: emit_sse_headers() source contains register_shutdown_function (CONN-03).
+	 *
+	 * @return void
+	 */
+	public function test_emit_sse_headers_contains_register_shutdown_function(): void {
+		$source = $this->get_method_source( 'emit_sse_headers' );
+		$this->assertStringContainsString( 'register_shutdown_function', $source );
+	}
+
+	/**
+	 * Test: handle_get() source contains keepalive SSE comment (CONN-01).
+	 *
+	 * @return void
+	 */
+	public function test_handle_get_contains_keepalive_comment(): void {
+		$source = $this->get_method_source( 'handle_get' );
+		$this->assertStringContainsString( 'keepalive', $source );
+	}
+
+	/**
+	 * Test: handle_get() source contains connection_aborted() check (CONN-03).
+	 *
+	 * @return void
+	 */
+	public function test_handle_get_contains_connection_aborted_check(): void {
+		$source = $this->get_method_source( 'handle_get' );
+		$this->assertStringContainsString( 'connection_aborted()', $source );
+	}
+
+	/**
+	 * Test: handle_get() source contains sleep( 25 ) for keepalive interval (CONN-01).
+	 *
+	 * @return void
+	 */
+	public function test_handle_get_contains_sleep_25(): void {
+		$source = $this->get_method_source( 'handle_get' );
+		$this->assertStringContainsString( 'sleep( 25 )', $source );
+	}
+
+	/**
+	 * Test: handle_post() source contains bricks_mcp_max_body_size filter (CONN-04).
+	 *
+	 * @return void
+	 */
+	public function test_handle_post_contains_max_body_size_filter(): void {
+		$source = $this->get_method_source( 'handle_post' );
+		$this->assertStringContainsString( 'bricks_mcp_max_body_size', $source );
+	}
+
+	/**
+	 * Test: handle_post() 413 block contains Connection: close header (CONN-04).
+	 *
+	 * @return void
+	 */
+	public function test_handle_post_413_has_connection_close(): void {
+		$source = $this->get_method_source( 'handle_post' );
+		$this->assertStringContainsString( 'Connection: close', $source );
+	}
+
+	/**
+	 * Test: handle_post() contains Connection: close at least twice (413 and 415 blocks) (CONN-04).
+	 *
+	 * @return void
+	 */
+	public function test_handle_post_415_has_connection_close(): void {
+		$source = $this->get_method_source( 'handle_post' );
+		$count  = substr_count( $source, 'Connection: close' );
+		$this->assertGreaterThanOrEqual( 2, $count, 'Expected Connection: close in both 413 and 415 blocks' );
+	}
 }
