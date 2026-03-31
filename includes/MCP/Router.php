@@ -885,27 +885,53 @@ array(
 		);
 
 		// page_diagnose: scan existing pages for known issues before editing.
-$this->register_tool(
-    'page_diagnose',
-    __( 'Pre-edit health check for any Bricks page or template. Returns issues with severity, element ID, and actionable fix. Call this before editing existing pages to avoid building on a broken foundation. Read-only — never modifies data. Checks 10 common issues: missing script tags, %root% in CSS, wrong keys (_maxWidth), plain hex colors, invalid breakpoints, orphaned children, phantom content on headers/footers, missing global classes, integer border values, PHP without executeCode.', 'bricks-mcp' ),
-    array(
-        'type'       => 'object',
-        'properties' => array(
-            'post_id' => array(
-                'type'        => 'integer',
-                'description' => __( 'Post/page/template ID to diagnose (required)', 'bricks-mcp' ),
-            ),
-        ),
-        'required' => array( 'post_id' ),
-    ),
-    array( $this, 'tool_page_diagnose' )
-,
-array(
-'readOnlyHint'=>true,
-'destructiveHint'=>false,
-'idempotentHint'=>true,
-'openWorldHint'=>false,
-));
+		$this->register_tool(
+			'page_diagnose',
+			__( 'Pre-edit health check for any Bricks page or template. Returns issues with severity, element ID, and actionable fix. Call this before editing existing pages to avoid building on a broken foundation. Read-only — never modifies data. Checks 10 common issues: missing script tags, %root% in CSS, wrong keys (_maxWidth), plain hex colors, invalid breakpoints, orphaned children, phantom content on headers/footers, missing global classes, integer border values, PHP without executeCode.', 'bricks-mcp' ),
+			array(
+				'type'       => 'object',
+				'properties' => array(
+					'post_id' => array(
+						'type'        => 'integer',
+						'description' => __( 'Post/page/template ID to diagnose (required)', 'bricks-mcp' ),
+					),
+				),
+				'required' => array( 'post_id' ),
+			),
+			array( $this, 'tool_page_diagnose' ),
+			array(
+				'readOnlyHint'    => true,
+				'destructiveHint' => false,
+				'idempotentHint'  => true,
+				'openWorldHint'   => false,
+			)
+		);
+
+		$this->register_tool(
+			'page_spacing_audit',
+			__( 'Audit padding/margin rhythm across all sections and containers on a page. Returns per-element spacing values, flags missing mobile overrides, and calculates vertical rhythm consistency score. Read-only.', 'bricks-mcp' ),
+			array(
+				'type'       => 'object',
+				'properties' => array(
+					'post_id' => array(
+						'type'        => 'integer',
+						'description' => __( 'Post/page ID to audit (required)', 'bricks-mcp' ),
+					),
+				),
+				'required' => array( 'post_id' ),
+			),
+			array( $this, 'tool_page_spacing_audit' ),
+			array(
+				'readOnlyHint'    => true,
+				'destructiveHint' => false,
+				'idempotentHint'  => true,
+				'openWorldHint'   => false,
+			)
+		);
+
+		$this->register_tool( 'page_screenshot', __( 'Screenshots a published page via Microlink API (free, 50/day, no key needed) with ApiFlash fallback (free key in MCP Settings). Returns base64 image and CDN URL. Use before page_visual_review or to visually verify changes. Read-only — calls external API.', 'bricks-mcp' ), [ 'type' => 'object', 'properties' => [ 'post_id' => [ 'type' => 'integer', 'description' => 'Post/page ID to screenshot (required)' ], 'viewport' => [ 'type' => 'string', 'enum' => [ 'desktop', 'tablet', 'mobile' ], 'description' => 'Viewport size (default: desktop)' ], 'fresh' => [ 'type' => 'boolean', 'description' => 'Bypass CDN cache for a fresh capture (default: false)' ] ], 'required' => [ 'post_id' ] ], [ $this, 'tool_page_screenshot' ], [ 'readOnlyHint' => true, 'destructiveHint' => false, 'idempotentHint' => false, 'openWorldHint' => true ] );
+
+		$this->register_tool( 'page_visual_review', __( 'Screenshots a page and sends the image to Claude Vision (Anthropic API) for structured visual review. Returns a natural language critique, issues list with severity, and positive observations. Requires Anthropic API key in MCP Settings. Depends on page_screenshot working correctly.', 'bricks-mcp' ), [ 'type' => 'object', 'properties' => [ 'post_id' => [ 'type' => 'integer', 'description' => 'Post/page ID to review (required)' ], 'viewport' => [ 'type' => 'string', 'enum' => [ 'desktop', 'tablet', 'mobile' ], 'description' => 'Viewport size (default: desktop)' ], 'focus' => [ 'type' => 'string', 'enum' => [ 'spacing', 'alignment', 'colors', 'all' ], 'description' => 'Review focus area (default: all)' ] ], 'required' => [ 'post_id' ] ], [ $this, 'tool_page_visual_review' ], [ 'readOnlyHint' => true, 'destructiveHint' => false, 'idempotentHint' => false, 'openWorldHint' => true ] );
 
 		// Element consolidated tool (replaces add_element, update_element, remove_element).
 		$this->register_tool(
@@ -9782,5 +9808,30 @@ array(
 		}
 
 		return $this->bricks_service->diagnose_page( $post_id );
+	}
+	
+	public function tool_page_spacing_audit( array $args ): array|\WP_Error {
+		$post_id = absint( $args['post_id'] ?? 0 );
+		if ( $post_id <= 0 ) { return new \WP_Error( 'missing_param', 'post_id is required.' ); }
+		$result = $this->bricks_service->get_spacing_audit( $post_id );
+		return is_wp_error( $result ) ? $result : $result;
+	}
+
+	public function tool_page_screenshot( array $args ): array|\WP_Error {
+		$post_id  = absint( $args['post_id'] ?? 0 );
+		$viewport = in_array( $args['viewport'] ?? '', [ 'desktop', 'tablet', 'mobile' ], true ) ? $args['viewport'] : 'desktop';
+		$fresh    = (bool) ( $args['fresh'] ?? false );
+		if ( $post_id <= 0 ) { return new \WP_Error( 'missing_param', 'post_id is required.' ); }
+		$result = $this->bricks_service->take_screenshot( $post_id, $viewport, $fresh );
+		return is_wp_error( $result ) ? $result : $result;
+	}
+
+	public function tool_page_visual_review( array $args ): array|\WP_Error {
+		$post_id  = absint( $args['post_id'] ?? 0 );
+		$viewport = in_array( $args['viewport'] ?? '', [ 'desktop', 'tablet', 'mobile' ], true ) ? $args['viewport'] : 'desktop';
+		$focus    = in_array( $args['focus'] ?? '', [ 'spacing', 'alignment', 'colors', 'all' ], true ) ? $args['focus'] : 'all';
+		if ( $post_id <= 0 ) { return new \WP_Error( 'missing_param', 'post_id is required.' ); }
+		$result = $this->bricks_service->get_visual_review( $post_id, $viewport, $focus );
+		return is_wp_error( $result ) ? $result : $result;
 	}
 }

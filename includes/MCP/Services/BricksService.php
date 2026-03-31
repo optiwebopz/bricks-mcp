@@ -130,17 +130,20 @@ class BricksService {
 	}
 
 	/**
-	 * Resolve the correct Bricks meta key for reading element content.
+	 * Resolve the correct Bricks meta key for reading or writing element content.
 	 *
 	 * Header and footer templates store their content under dedicated meta keys
 	 * (_bricks_page_header_2 and _bricks_page_footer_2 respectively), not the
 	 * default _bricks_page_content_2. This method checks the template type and
 	 * returns the appropriate key.
 	 *
+	 * Public so that save_elements() and unhook_bricks_meta_filters() can resolve
+	 * the correct key at write time, preventing phantom-section bugs on templates.
+	 *
 	 * @param int $post_id The post ID.
-	 * @return string The meta key to use for reading element content.
+	 * @return string The meta key to use for reading or writing element content.
 	 */
-	private function resolve_elements_meta_key( int $post_id ): string {
+	public function resolve_elements_meta_key( int $post_id ): string {
 		$template_type = get_post_meta( $post_id, '_bricks_template_type', true );
 		return match ( $template_type ) {
 			'header' => defined( 'BRICKS_DB_PAGE_HEADER' ) ? BRICKS_DB_PAGE_HEADER : '_bricks_page_header_2',
@@ -166,7 +169,7 @@ class BricksService {
 	 * @param array<int, array<string, mixed>> $elements Flat array of elements to save.
 	 * @return true|\WP_Error True on success, WP_Error on failure.
 	 */
-	public function save_elements( int $post_id, array $elements ): true|\WP_Error {
+	public function save_elements( int $post_id, array $elements ): bool|\WP_Error {
 		// Always run structural linkage validation.
 		$linkage_validation = $this->validate_element_linkage( $elements );
 
@@ -183,19 +186,25 @@ class BricksService {
 			}
 		}
 
+		// Resolve the correct meta key for this post type.
+		// Header/footer templates use _bricks_page_header_2 / _bricks_page_footer_2;
+		// regular pages/posts use _bricks_page_content_2 (self::META_KEY).
+		// Using self::META_KEY here would create a phantom section on templates.
+		$meta_key = $this->resolve_elements_meta_key( $post_id );
+
 		// Clear stale object cache so update_post_meta sees current DB state.
 		wp_cache_delete( $post_id, 'post_meta' );
 
 		// Temporarily unhook Bricks sanitize/update filters that block programmatic meta writes.
-		$this->unhook_bricks_meta_filters();
+		$this->unhook_bricks_meta_filters( $post_id );
 		try {
-			$updated = update_post_meta( $post_id, self::META_KEY, $elements );
+			$updated = update_post_meta( $post_id, $meta_key, $elements );
 
 			if ( false === $updated ) {
 				// update_post_meta returns false when old === new (stale cache or serialization mismatch).
 				// Force write via delete + add.
-				delete_post_meta( $post_id, self::META_KEY );
-				add_post_meta( $post_id, self::META_KEY, $elements, true );
+				delete_post_meta( $post_id, $meta_key );
+				add_post_meta( $post_id, $meta_key, $elements, true );
 			}
 
 			update_post_meta( $post_id, self::EDITOR_MODE_KEY, 'bricks' );
@@ -205,9 +214,9 @@ class BricksService {
 
 			// Verify write persisted — bypass cache, read raw from database.
 			wp_cache_delete( $post_id, 'post_meta' );
-			$stored = get_post_meta( $post_id, self::META_KEY, true );
+			$stored = get_post_meta( $post_id, $meta_key, true );
 		} finally {
-			$this->rehook_bricks_meta_filters();
+			$this->rehook_bricks_meta_filters( $post_id );
 		}
 
 		if ( ! is_array( $stored ) || count( $stored ) !== count( $elements ) ) {
@@ -260,17 +269,33 @@ class BricksService {
 	 * instance methods on its Ajax class. These reject writes outside the Bricks
 	 * editor context. We temporarily unhook them so MCP can save validated data.
 	 *
+	 * Accepts $post_id so the correct sanitize filter key is removed for header/footer
+	 * templates (_bricks_page_header_2 / _bricks_page_footer_2) rather than always
+	 * removing only the content key (_bricks_page_content_2).
+	 *
+	 * @param int $post_id The post ID being written to.
 	 * @return void
 	 */
-	public function unhook_bricks_meta_filters(): void {
+	public function unhook_bricks_meta_filters( int $post_id = 0 ): void {
 		global $wp_filter;
 
-		$sanitize_key = 'sanitize_post_meta_' . self::META_KEY;
+		// Resolve the meta key being written so we remove the right sanitize filter.
+		$resolved_key = $post_id > 0 ? $this->resolve_elements_meta_key( $post_id ) : self::META_KEY;
+		$sanitize_key = 'sanitize_post_meta_' . $resolved_key;
 
-		// Store and remove the sanitize filter entirely.
+		// Also always unhook the default content key in case Bricks registered it globally.
+		$default_sanitize_key = 'sanitize_post_meta_' . self::META_KEY;
+
+		// Store and remove the resolved sanitize filter.
 		if ( isset( $wp_filter[ $sanitize_key ] ) ) {
 			$this->stored_filters[ $sanitize_key ] = $wp_filter[ $sanitize_key ];
 			unset( $wp_filter[ $sanitize_key ] );
+		}
+
+		// Store and remove the default content sanitize filter (no-op if same as resolved key).
+		if ( $default_sanitize_key !== $sanitize_key && isset( $wp_filter[ $default_sanitize_key ] ) ) {
+			$this->stored_filters[ $default_sanitize_key ] = $wp_filter[ $default_sanitize_key ];
+			unset( $wp_filter[ $default_sanitize_key ] );
 		}
 
 		// Store and remove Bricks\Ajax callbacks from update_post_metadata.
@@ -294,17 +319,30 @@ class BricksService {
 	/**
 	 * Re-hook Bricks meta filters after programmatic write.
 	 *
+	 * Accepts $post_id to restore the correct sanitize filter key for header/footer
+	 * templates, mirroring the fix in unhook_bricks_meta_filters().
+	 *
+	 * @param int $post_id The post ID that was written to.
 	 * @return void
 	 */
-	public function rehook_bricks_meta_filters(): void {
+	public function rehook_bricks_meta_filters( int $post_id = 0 ): void {
 		global $wp_filter;
 
-		$sanitize_key = 'sanitize_post_meta_' . self::META_KEY;
+		// Resolve the same keys that were stored during unhook.
+		$resolved_key         = $post_id > 0 ? $this->resolve_elements_meta_key( $post_id ) : self::META_KEY;
+		$sanitize_key         = 'sanitize_post_meta_' . $resolved_key;
+		$default_sanitize_key = 'sanitize_post_meta_' . self::META_KEY;
 
-		// Restore the sanitize filter.
+		// Restore the resolved sanitize filter.
 		if ( isset( $this->stored_filters[ $sanitize_key ] ) ) {
 			$wp_filter[ $sanitize_key ] = $this->stored_filters[ $sanitize_key ];
 			unset( $this->stored_filters[ $sanitize_key ] );
+		}
+
+		// Restore the default content sanitize filter (no-op if same key).
+		if ( $default_sanitize_key !== $sanitize_key && isset( $this->stored_filters[ $default_sanitize_key ] ) ) {
+			$wp_filter[ $default_sanitize_key ] = $this->stored_filters[ $default_sanitize_key ];
+			unset( $this->stored_filters[ $default_sanitize_key ] );
 		}
 
 		// Restore Bricks\Ajax callbacks to update_post_metadata.
@@ -378,7 +416,7 @@ class BricksService {
 	 * @param array<int, array<string, mixed>> $elements Flat array of elements.
 	 * @return true|\WP_Error True if valid, WP_Error with code 'invalid_element_structure' on failure.
 	 */
-	public function validate_element_linkage( array $elements ): true|\WP_Error {
+	public function validate_element_linkage( array $elements ): bool|\WP_Error {
 		$id_map = [];
 
 		// First pass: build ID map and check required keys and ID format.
@@ -549,7 +587,7 @@ class BricksService {
 	 * @param array<string, bool>              $in_stack    Set of nodes currently in recursion stack.
 	 * @return true|\WP_Error True if no cycle, WP_Error if cycle detected.
 	 */
-	private function detect_cycle( string $element_id, array $elements, array $id_map, array &$visited, array &$in_stack ): true|\WP_Error {
+	private function detect_cycle( string $element_id, array $elements, array $id_map, array &$visited, array &$in_stack ): bool|\WP_Error {
 		$visited[ $element_id ]  = true;
 		$in_stack[ $element_id ] = true;
 
@@ -816,7 +854,7 @@ class BricksService {
 	 * @param array<string, mixed> $args        Fields to update: title, status, slug, type, tags, bundles.
 	 * @return true|array<string, mixed>|\WP_Error True on success, array with warning when type changed, WP_Error on failure.
 	 */
-	public function update_template_meta( int $template_id, array $args ): true|array|\WP_Error {
+	public function update_template_meta( int $template_id, array $args ): bool|array|\WP_Error {
 		$post = get_post( $template_id );
 
 		if ( ! $post || 'bricks_template' !== $post->post_type ) {
@@ -1349,7 +1387,7 @@ class BricksService {
 	 * @param string $class_id Class ID to trash.
 	 * @return true|\WP_Error True on success, WP_Error if class not found.
 	 */
-	public function trash_global_class( string $class_id ): true|\WP_Error {
+	public function trash_global_class( string $class_id ): bool|\WP_Error {
 		$classes = get_option( 'bricks_global_classes', [] );
 		if ( ! is_array( $classes ) ) {
 			$classes = [];
@@ -1680,7 +1718,7 @@ class BricksService {
 	 * @param string $category_id Category ID to delete.
 	 * @return true|\WP_Error True on success, WP_Error if not found.
 	 */
-	public function delete_global_class_category( string $category_id ): true|\WP_Error {
+	public function delete_global_class_category( string $category_id ): bool|\WP_Error {
 		$categories = get_option( 'bricks_global_classes_categories', [] );
 		if ( ! is_array( $categories ) ) {
 			$categories = [];
@@ -2266,7 +2304,7 @@ class BricksService {
 	 * @param array<int, string> $element_ids Element IDs to apply the class to.
 	 * @return true|\WP_Error True on success, WP_Error on failure.
 	 */
-	public function apply_class_to_elements( int $post_id, string $class_id, array $element_ids ): true|\WP_Error {
+	public function apply_class_to_elements( int $post_id, string $class_id, array $element_ids ): bool|\WP_Error {
 		$elements = $this->get_elements( $post_id );
 
 		// Build element ID map for validation.
@@ -2321,7 +2359,7 @@ class BricksService {
 	 * @param array<int, string> $element_ids Element IDs to remove the class from.
 	 * @return true|\WP_Error True on success, WP_Error on failure.
 	 */
-	public function remove_class_from_elements( int $post_id, string $class_id, array $element_ids ): true|\WP_Error {
+	public function remove_class_from_elements( int $post_id, string $class_id, array $element_ids ): bool|\WP_Error {
 		$elements = $this->get_elements( $post_id );
 
 		// Build element ID map for validation.
@@ -2692,7 +2730,7 @@ class BricksService {
 	 * @param array<string, mixed> $args    Fields to update: title, status, slug, featured_image.
 	 * @return true|\WP_Error True on success, WP_Error on failure.
 	 */
-	public function update_page_meta( int $post_id, array $args ): true|\WP_Error {
+	public function update_page_meta( int $post_id, array $args ): bool|\WP_Error {
 		$post = get_post( $post_id );
 		if ( ! $post ) {
 			return new \WP_Error(
@@ -2744,7 +2782,7 @@ class BricksService {
 	 * @param int $post_id Post ID to trash.
 	 * @return true|\WP_Error True on success, WP_Error if post not found.
 	 */
-	public function delete_page( int $post_id ): true|\WP_Error {
+	public function delete_page( int $post_id ): bool|\WP_Error {
 		$post = get_post( $post_id );
 		if ( ! $post ) {
 			return new \WP_Error(
@@ -2942,7 +2980,7 @@ class BricksService {
 	 * @param array<int, array<string, mixed>> $conditions  Array of Bricks condition objects.
 	 * @return true|\WP_Error True on success, WP_Error on failure.
 	 */
-	public function set_template_conditions( int $template_id, array $conditions ): true|\WP_Error {
+	public function set_template_conditions( int $template_id, array $conditions ): bool|\WP_Error {
 		$post = get_post( $template_id );
 
 		if ( ! $post || 'bricks_template' !== $post->post_type ) {
@@ -3380,7 +3418,7 @@ class BricksService {
 	 * @param int    $term_id  Term ID to delete.
 	 * @return true|\WP_Error True on success, WP_Error on failure.
 	 */
-	public function delete_template_term( string $taxonomy, int $term_id ): true|\WP_Error {
+	public function delete_template_term( string $taxonomy, int $term_id ): bool|\WP_Error {
 		if ( ! in_array( $taxonomy, [ 'template_tag', 'template_bundle' ], true ) ) {
 			return new \WP_Error(
 				'invalid_taxonomy',
@@ -7255,16 +7293,30 @@ class BricksService {
 			);
 		}
 
+		// Set template type FIRST so that resolve_elements_meta_key() picks the right
+		// meta key when save_elements() is called below.
+		// Header/footer types use _bricks_page_header_2 / _bricks_page_footer_2;
+		// all other types (section, page, wc_*, etc.) use _bricks_page_content_2.
+		$template_type = sanitize_text_field( $data['templateType'] ?? 'section' );
+		update_post_meta( $template_id, '_bricks_template_type', $template_type );
+
 		// Regenerate element IDs to prevent collisions.
 		$content = $this->normalizer->normalize( $data['content'] );
 
-		// Save content and editor mode.
-		update_post_meta( $template_id, self::META_KEY, $content );
-		update_post_meta( $template_id, self::EDITOR_MODE_KEY, 'bricks' );
-
-		// Set template type (default to 'section' if not provided).
-		$template_type = sanitize_text_field( $data['templateType'] ?? 'section' );
-		update_post_meta( $template_id, '_bricks_template_type', $template_type );
+		// Save content via save_elements() so the correct meta key is resolved for
+		// header/footer templates and Bricks sanitize filters are properly unhooked.
+		$save_result = $this->save_elements( $template_id, $content );
+		if ( is_wp_error( $save_result ) ) {
+			wp_delete_post( $template_id, true );
+			return new \WP_Error(
+				'import_save_failed',
+				sprintf(
+					/* translators: %s: error message */
+					__( 'Template created but element save failed: %s. Template has been rolled back.', 'bricks-mcp' ),
+					$save_result->get_error_message()
+				)
+			);
+		}
 
 		// Save page settings if provided, stripping JS-capable keys when dangerous_actions is disabled.
 		$page_settings_key = defined( 'BRICKS_DB_PAGE_SETTINGS' ) ? BRICKS_DB_PAGE_SETTINGS : '_bricks_page_settings';
@@ -7873,7 +7925,7 @@ class BricksService {
 					$issues[] = array( 'element_id' => $el_id, 'severity' => 'warning', 'type' => 'invalid_breakpoint', 'message' => "Element {$el_id}: key '{$key}' has unknown segment '{$bad_seg}'.", 'fix' => 'Valid IDs: ' . implode( ', ', $bps ) . '. Pseudo-states and variant-* are valid.' );
 				}
 			}
-			foreach ( ( $el['children'] ?? array() ) as $child_id ) {
+	    	foreach ( ( $el['children'] ?? array() ) as $child_id ) {
 				if ( ! isset( $id_map[ $child_id ] ) ) {
 					$issues[] = array( 'element_id' => $el_id, 'severity' => 'error', 'type' => 'orphaned_child', 'message' => "Element {$el_id}: child '{$child_id}' does not exist.", 'fix' => "Remove '{$child_id}' from children." );
 				}
@@ -7893,7 +7945,69 @@ class BricksService {
 					$issues[] = array( 'element_id' => $el_id, 'severity' => 'warning', 'type' => 'integer_border', 'message' => "Element {$el_id}: _border.width is integer {$w}.", 'fix' => "Change to '{$w}px'." );
 				}
 			}
+			
+			// Check #11 — missing_wp_reset_postdata
+			if ( in_array( $el_name, array( 'html', 'code' ), true ) && ! empty( $settings['executeCode'] ) ) {
+				$code_content = '';
+				if ( ! empty( $settings['content'] ) ) {
+					$code_content = is_array( $settings['content'] ) ? ( $settings['content']['code'] ?? '' ) : $settings['content'];
+				} elseif ( ! empty( $settings['code'] ) ) {
+					$code_content = is_array( $settings['code'] ) ? ( $settings['code']['code'] ?? '' ) : $settings['code'];
+				}
+				if (
+					! empty( $code_content ) &&
+					( str_contains( $code_content, 'new WP_Query' ) || str_contains( $code_content, 'WP_Query(' ) ) &&
+					! str_contains( $code_content, 'wp_reset_postdata' )
+				) {
+					$issues[] = array( 'element_id' => $el_id, 'severity' => 'warning', 'type' => 'missing_wp_reset_postdata', 'message' => "Element {$el_id}: WP_Query found but wp_reset_postdata() is missing.", 'fix' => 'Add wp_reset_postdata() after endwhile; to prevent post data bleed.' );
+				}
+			}
+
+			// Check #12 — missing_mobile_padding
+			if ( in_array( $el_name, array( 'section', 'container', 'div', 'block' ), true ) ) {
+				$has_desktop_padding  = ! empty( $settings['_padding'] );
+				$has_mobile_portrait  = ! empty( $settings['_padding:mobile_portrait'] );
+				$has_mobile_landscape = ! empty( $settings['_padding:mobile_landscape'] );
+				$has_mobile_legacy    = ! empty( $settings['_padding:mobile'] );
+				if ( $has_desktop_padding && ! $has_mobile_portrait && ! $has_mobile_landscape && ! $has_mobile_legacy ) {
+					$issues[] = array( 'element_id' => $el_id, 'severity' => 'warning', 'type' => 'missing_mobile_padding', 'message' => "Element {$el_id} ({$el_name}): has desktop _padding but no mobile override.", 'fix' => 'Add _padding:mobile_portrait to preserve spacing rhythm on small screens.' );
+				}
+			}
 		}
+		// Check #13 — hardcoded_design_token
+		$global_vars = get_option( 'bricks_global_variables', array() );
+		if ( ! empty( $global_vars ) && is_array( $global_vars ) ) {
+			$hex_to_var = array();
+			foreach ( $global_vars as $gv ) {
+				$var_value = $gv['value'] ?? '';
+				$var_name  = $gv['name']  ?? '';
+				if ( ! empty( $var_value ) && preg_match( '/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/', trim( $var_value ) ) ) {
+					$hex_to_var[ strtolower( trim( $var_value ) ) ] = '--' . sanitize_title( $var_name );
+				}
+			}
+			if ( ! empty( $hex_to_var ) ) {
+				$token_keys = array( '_background', '_typography', '_border', '_color', '_gradient' );
+				foreach ( $elements as $scan_el ) {
+					$scan_id       = $scan_el['id'] ?? '';
+					$scan_settings = $scan_el['settings'] ?? array();
+					$scan_json     = '';
+					foreach ( $token_keys as $tk ) {
+						if ( isset( $scan_settings[ $tk ] ) ) {
+							$scan_json .= wp_json_encode( $scan_settings[ $tk ] );
+						}
+					}
+					if ( empty( $scan_json ) ) { continue; }
+					preg_match_all( '/#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b/', $scan_json, $hex_matches );
+					foreach ( array_unique( $hex_matches[0] ?? array() ) as $found_hex ) {
+						$normalized = strtolower( $found_hex );
+						if ( isset( $hex_to_var[ $normalized ] ) ) {
+							$issues[] = array( 'element_id' => $scan_id, 'severity' => 'warning', 'type' => 'hardcoded_design_token', 'message' => "Element {$scan_id}: {$found_hex} matches design token var({$hex_to_var[$normalized]}). Use the CSS variable.", 'fix' => "Replace {$found_hex} with {\"raw\":\"var({$hex_to_var[$normalized]})\"} in element settings." );
+						}
+					}
+				}
+			}
+		}
+		
 		$errors   = count( array_filter( $issues, fn( $i ) => 'error' === $i['severity'] ) );
 		$warnings = count( array_filter( $issues, fn( $i ) => 'warning' === $i['severity'] ) );
 		return array(
@@ -7908,5 +8022,126 @@ class BricksService {
 		);
 	}
 	
-}
+	/**
+	 * get_spacing_audit — Tool: page_spacing_audit
+	 */
+	public function get_spacing_audit( int $post_id ): array {
+		$elements = $this->get_elements( $post_id );
+		if ( empty( $elements ) || is_wp_error( $elements ) ) {
+			return array( 'post_id' => $post_id, 'elements' => array(), 'flags' => array( 'No elements found.' ), 'summary' => array() );
+		}
+		$bp_suffixes  = array( 'desktop' => '', 'tablet_portrait' => ':tablet_portrait', 'mobile_landscape' => ':mobile_landscape', 'mobile_portrait' => ':mobile_portrait' );
+		$layout_types = array( 'section', 'container', 'div', 'block' );
+		$report = array(); $v_tops = array(); $flags = array();
+		foreach ( $elements as $el ) {
+			$el_name = $el['name'] ?? ( $el['element'] ?? '' );
+			if ( ! in_array( $el_name, $layout_types, true ) ) { continue; }
+			$el_id = $el['id'] ?? 'unknown'; $settings = $el['settings'] ?? array();
+			$el_report = array( 'id' => $el_id, 'type' => $el_name, 'label' => $el['label'] ?? $el_name, 'padding' => array(), 'margin' => array(), 'flags' => array() );
+			$has_any_padding = false; $has_mobile_pad = false;
+			foreach ( $bp_suffixes as $bp => $suffix ) {
+				$pad_key = '_padding' . $suffix; $mar_key = '_margin' . $suffix;
+				if ( ! empty( $settings[ $pad_key ] ) ) {
+					$el_report['padding'][ $bp ] = $settings[ $pad_key ]; $has_any_padding = true;
+					if ( $bp !== 'desktop' ) { $has_mobile_pad = true; }
+					$top_val = $settings[ $pad_key ]['top'] ?? null;
+					if ( $top_val !== null && is_numeric( str_replace( 'px', '', $top_val ) ) ) { $v_tops[] = (int) str_replace( 'px', '', $top_val ); }
+				}
+				if ( ! empty( $settings[ $mar_key ] ) ) { $el_report['margin'][ $bp ] = $settings[ $mar_key ]; }
+			}
+			if ( empty( $el_report['padding'] ) ) { $el_report['flags'][] = 'No padding set — may appear cramped.'; }
+			if ( $has_any_padding && ! $has_mobile_pad ) { $el_report['flags'][] = 'Desktop padding set but no mobile override.'; }
+			$report[] = $el_report;
+		}
+		$rhythm_score = 'N/A';
+		if ( count( $v_tops ) >= 2 ) {
+			$mean = array_sum( $v_tops ) / count( $v_tops );
+			$std  = sqrt( array_sum( array_map( fn( $x ) => ( $x - $mean ) ** 2, $v_tops ) ) / count( $v_tops ) );
+			$rhythm_score = round( $std, 1 );
+			if ( $std > 30 ) { $flags[] = sprintf( 'Inconsistent vertical rhythm (std dev: %spx). Values: %s.', $rhythm_score, implode( ', ', array_map( fn($v) => $v . 'px', $v_tops ) ) ); }
+		}
+		$flagged = array_values( array_filter( $report, fn( $r ) => ! empty( $r['flags'] ) ) );
+		return array( 'post_id' => $post_id, 'total_layout_elements' => count( $report ), 'elements' => $report, 'elements_with_flags' => $flagged, 'page_flags' => $flags, 'summary' => array( 'rhythm_std_dev_px' => $rhythm_score, 'top_padding_values' => array_map( fn($v) => $v . 'px', $v_tops ), 'flag_count' => count( $flagged ) ) );
+	}
 
+	/**
+	 * take_screenshot — Tool: page_screenshot
+	 * Microlink primary (free, 50/day), ApiFlash fallback (key in settings).
+	 */
+	public function take_screenshot( int $post_id, string $viewport = 'desktop', bool $fresh = false ): array|\WP_Error {
+		$page_url = get_permalink( $post_id );
+		if ( empty( $page_url ) || is_wp_error( $page_url ) ) {
+			return new \WP_Error( 'invalid_post', sprintf( 'Cannot resolve permalink for post ID %d.', $post_id ) );
+		}
+		$vp_map = array( 'desktop' => array( 'width' => 1280, 'height' => 900, 'device' => null ), 'tablet' => array( 'width' => 768, 'height' => 1024, 'device' => null ), 'mobile' => array( 'width' => 390, 'height' => 844, 'device' => 'iphone' ) );
+		$vp = $vp_map[ $viewport ] ?? $vp_map['desktop'];
+		$ml_args = array( 'url' => rawurlencode( $page_url ), 'screenshot' => 'true', 'meta' => 'false', 'embed' => 'screenshot.url' );
+		if ( $vp['device'] ) { $ml_args['device'] = $vp['device']; } else { $ml_args['viewport.width'] = $vp['width']; $ml_args['viewport.height'] = $vp['height']; }
+		if ( $fresh ) { $ml_args['force'] = 'true'; }
+		$ml_response = wp_remote_get( add_query_arg( $ml_args, 'https://api.microlink.io/' ), array( 'timeout' => 30, 'sslverify' => true, 'headers' => array( 'Accept' => 'application/json' ) ) );
+		if ( ! is_wp_error( $ml_response ) && wp_remote_retrieve_response_code( $ml_response ) === 200 ) {
+			$body     = json_decode( wp_remote_retrieve_body( $ml_response ), true );
+			$shot_url = $body['data']['screenshot']['url'] ?? null;
+			if ( ! empty( $shot_url ) ) {
+				$img = wp_remote_get( esc_url_raw( $shot_url ), array( 'timeout' => 20 ) );
+				// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+				$b64 = ( ! is_wp_error( $img ) && wp_remote_retrieve_response_code( $img ) === 200 ) ? base64_encode( wp_remote_retrieve_body( $img ) ) : '';
+				return array( 'image_url' => $shot_url, 'image_base64' => $b64, 'viewport' => $viewport, 'width' => $vp['width'], 'height' => $vp['height'], 'source' => 'microlink', 'cached' => ! $fresh, 'page_url' => $page_url );
+			}
+		}
+		$mcp_settings = get_option( 'bricks_mcp_settings', array() );
+		$apiflash_key = sanitize_text_field( $mcp_settings['apiflash_key'] ?? '' );
+		if ( empty( $apiflash_key ) ) {
+			return new \WP_Error( 'screenshot_failed', 'Microlink failed and no ApiFlash key configured. Add key in MCP Settings → Claude Desktop tab.' );
+		}
+		$af_args = array( 'access_key' => $apiflash_key, 'url' => rawurlencode( $page_url ), 'format' => 'png', 'width' => $vp['width'], 'height' => $vp['height'], 'full_page' => 'false', 'fresh' => $fresh ? 'true' : 'false' );
+		if ( $viewport === 'mobile' ) { $af_args['mobile'] = 'true'; }
+		$af_response = wp_remote_get( esc_url_raw( add_query_arg( $af_args, 'https://api.apiflash.com/v1/urltoimage' ) ), array( 'timeout' => 30, 'sslverify' => true ) );
+		if ( is_wp_error( $af_response ) ) { return new \WP_Error( 'screenshot_failed', 'Both services failed: ' . $af_response->get_error_message() ); }
+		$af_code = wp_remote_retrieve_response_code( $af_response );
+		if ( $af_code !== 200 ) { return new \WP_Error( 'screenshot_failed', sprintf( 'ApiFlash returned HTTP %d. Check API key in Settings.', $af_code ) ); }
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+		return array( 'image_url' => add_query_arg( $af_args, 'https://api.apiflash.com/v1/urltoimage' ), 'image_base64' => base64_encode( wp_remote_retrieve_body( $af_response ) ), 'viewport' => $viewport, 'width' => $vp['width'], 'height' => $vp['height'], 'source' => 'apiflash', 'cached' => false, 'page_url' => $page_url );
+	}
+
+	/**
+	 * get_visual_review — Tool: page_visual_review
+	 * Screenshot + Claude Vision → structured visual critique.
+	 */
+	public function get_visual_review( int $post_id, string $viewport = 'desktop', string $focus = 'all' ): array|\WP_Error {
+		$mcp_settings  = get_option( 'bricks_mcp_settings', array() );
+		$anthropic_key = sanitize_text_field( $mcp_settings['anthropic_api_key'] ?? '' );
+		if ( empty( $anthropic_key ) ) {
+			return new \WP_Error( 'no_anthropic_key', 'Anthropic API key not configured. Add it in MCP Settings → Claude Desktop tab.' );
+		}
+		$screenshot = $this->take_screenshot( $post_id, $viewport, false );
+		if ( is_wp_error( $screenshot ) ) { return $screenshot; }
+		$image_base64   = $screenshot['image_base64'] ?? '';
+		$screenshot_url = $screenshot['image_url'] ?? '';
+		if ( empty( $image_base64 ) ) { return new \WP_Error( 'empty_screenshot', 'Screenshot image data is empty.' ); }
+		$focus_instructions = match ( $focus ) {
+			'spacing'   => 'Focus on: section padding rhythm, gaps, vertical spacing.',
+			'alignment' => 'Focus on: text alignment consistency, heading hierarchy.',
+			'colors'    => 'Focus on: color contrast, design token consistency.',
+			default     => 'Analyze all: spacing, alignment, colors, broken elements, mobile layout.',
+		};
+		$prompt = "You are a professional web design reviewer analyzing a WordPress page built with Bricks Builder.\n\n{$focus_instructions}\n\nReturn ONLY valid JSON (no markdown):\n{\"critique\":\"2-3 sentence assessment\",\"score\":1,\"issues\":[{\"area\":\"string\",\"category\":\"spacing|alignment|colors|broken|mobile\",\"problem\":\"string\",\"severity\":\"critical|warning|suggestion\",\"suggestion\":\"string\"}],\"positive_observations\":[\"string\"]}";
+		$api_payload  = array( 'model' => 'claude-sonnet-4-20250514', 'max_tokens' => 1000, 'messages' => array( array( 'role' => 'user', 'content' => array( array( 'type' => 'image', 'source' => array( 'type' => 'base64', 'media_type' => 'image/png', 'data' => $image_base64 ) ), array( 'type' => 'text', 'text' => $prompt ) ) ) ) );
+		$api_response = wp_remote_post( 'https://api.anthropic.com/v1/messages', array( 'timeout' => 45, 'headers' => array( 'Content-Type' => 'application/json', 'x-api-key' => $anthropic_key, 'anthropic-version' => '2023-06-01' ), 'body' => wp_json_encode( $api_payload ) ) );
+		if ( is_wp_error( $api_response ) ) { return new \WP_Error( 'anthropic_request_failed', $api_response->get_error_message() ); }
+		$api_code = wp_remote_retrieve_response_code( $api_response );
+		if ( $api_code !== 200 ) {
+			$err = json_decode( wp_remote_retrieve_body( $api_response ), true );
+			return new \WP_Error( 'anthropic_api_error', sprintf( 'Anthropic HTTP %d: %s', $api_code, $err['error']['message'] ?? 'Unknown' ) );
+		}
+		$raw_text    = json_decode( wp_remote_retrieve_body( $api_response ), true )['content'][0]['text'] ?? '';
+		$review_data = json_decode( trim( $raw_text ), true );
+		if ( json_last_error() !== JSON_ERROR_NONE ) {
+			preg_match( '/\{[\s\S]+\}/m', $raw_text, $m );
+			$review_data = ! empty( $m[0] ) ? json_decode( $m[0], true ) : null;
+		}
+		if ( empty( $review_data ) ) { return new \WP_Error( 'review_parse_failed', 'Could not parse Claude response: ' . substr( $raw_text, 0, 300 ) ); }
+		return array( 'post_id' => $post_id, 'viewport' => $viewport, 'focus' => $focus, 'screenshot_url' => $screenshot_url, 'screenshot_source' => $screenshot['source'] ?? 'unknown', 'critique' => $review_data['critique'] ?? '', 'score' => $review_data['score'] ?? null, 'issues' => $review_data['issues'] ?? array(), 'positive_observations' => $review_data['positive_observations'] ?? array(), 'issue_count' => count( $review_data['issues'] ?? array() ), 'critical_count' => count( array_filter( $review_data['issues'] ?? array(), fn( $i ) => ( $i['severity'] ?? '' ) === 'critical' ) ) );
+	}
+	
+}
