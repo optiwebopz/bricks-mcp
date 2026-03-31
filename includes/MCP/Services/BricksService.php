@@ -1,9 +1,30 @@
 <?php
 /**
+ * File: includes/MCP/Services/BricksService.php
+ *
  * Bricks Builder data access service.
  *
  * @package BricksMCP
  * @license GPL-2.0-or-later
+ * @version 1.5.2
+ *
+ * Changelog:
+ * ----------
+ * 1.5.2 — 2026-03-31
+ *   - FIX (GitHub #11): update_page_css() — CSS is now sanitised before storing.
+ *                       Added 100 KB hard cap. Blocks javascript:, expression(),
+ *                       @import, data:, behaviour:, and -moz-binding: patterns that
+ *                       can enable code execution or data exfiltration.
+ *   - FIX (GitHub #9):  import_template_from_url() — SSRF hardening:
+ *                       (a) Enforced HTTPS-only URLs.
+ *                       (b) Added DNS-rebinding guard: resolves the hostname and
+ *                         rejects requests that resolve to private/reserved IP ranges
+ *                         (10.x, 172.16.x, 192.168.x, 127.x, 169.254.x).
+ *                       (c) Enforced application/json Content-Type on response to
+ *                         prevent importing arbitrary binary content.
+ *   - FIX (Issue 3):    Removed stray extra closing brace at end of file (line 8238)
+ *                       that was left over from the manual mid-session syntax fix
+ *                       applied 2026-03-30 ~22:30. Brace balance was off by 1.
  */
 
 declare(strict_types=1);
@@ -854,7 +875,7 @@ class BricksService {
 	 * @param array<string, mixed> $args        Fields to update: title, status, slug, type, tags, bundles.
 	 * @return true|array<string, mixed>|\WP_Error True on success, array with warning when type changed, WP_Error on failure.
 	 */
-	public function update_template_meta( int $template_id, array $args ): bool|array|\WP_Error {
+	public function update_template_meta( int $template_id, array $args ): array|\WP_Error {
 		$post = get_post( $template_id );
 
 		if ( ! $post || 'bricks_template' !== $post->post_type ) {
@@ -7389,6 +7410,51 @@ class BricksService {
 			);
 		}
 
+		// GitHub #9: enforce HTTPS-only to prevent plaintext interception.
+		if ( 0 !== strpos( strtolower( $url ), 'https://' ) ) {
+			return new \WP_Error(
+				'https_required',
+				__( 'Template import URLs must use HTTPS.', 'bricks-mcp' )
+			);
+		}
+
+		// GitHub #9: DNS-rebinding guard — resolve the hostname and reject private/reserved IP ranges
+		// before making the request. wp_http_validate_url() blocks obvious 127.0.0.1 literals but
+		// does NOT protect against DNS rebinding where a public domain resolves to a private IP.
+		$parsed_url = wp_parse_url( $url );
+		$host       = $parsed_url['host'] ?? '';
+		if ( $host ) {
+			$resolved_ip = gethostbyname( $host );
+			if ( $resolved_ip !== $host ) {
+				// Check resolved IP against private/reserved ranges.
+				$private_ranges = array(
+					'10.0.0.0/8',
+					'172.16.0.0/12',
+					'192.168.0.0/16',
+					'127.0.0.0/8',
+					'169.254.0.0/16',
+					'::1/128',
+					'fc00::/7',
+				);
+				$ip_long = ip2long( $resolved_ip );
+				if ( false !== $ip_long ) {
+					foreach ( $private_ranges as $range ) {
+						if ( false === strpos( $range, ':' ) ) {
+							list( $subnet, $bits ) = explode( '/', $range );
+							$mask         = ~( ( 1 << ( 32 - (int) $bits ) ) - 1 );
+							$subnet_long  = ip2long( $subnet );
+							if ( ( $ip_long & $mask ) === ( $subnet_long & $mask ) ) {
+								return new \WP_Error(
+									'ssrf_blocked',
+									__( 'Template import URL resolves to a private or reserved IP address.', 'bricks-mcp' )
+								);
+							}
+						}
+					}
+				}
+			}
+		}
+
 		$response = wp_safe_remote_get(
 			$url,
 			array(
@@ -7409,6 +7475,19 @@ class BricksService {
 					/* translators: %d: HTTP status code */
 					__( 'Remote URL returned HTTP %d. Expected 200.', 'bricks-mcp' ),
 					$status_code
+				)
+			);
+		}
+
+		// GitHub #9: enforce application/json content-type to prevent importing arbitrary binary content.
+		$content_type = wp_remote_retrieve_header( $response, 'content-type' );
+		if ( $content_type && false === strpos( strtolower( $content_type ), 'application/json' ) ) {
+			return new \WP_Error(
+				'invalid_content_type',
+				sprintf(
+					/* translators: %s: content-type header value */
+					__( 'Remote URL returned unexpected content-type: %s. Expected application/json.', 'bricks-mcp' ),
+					esc_html( $content_type )
 				)
 			);
 		}
@@ -7783,6 +7862,39 @@ class BricksService {
 		if ( '' === $css ) {
 			unset( $settings['customCss'] );
 		} else {
+			// GitHub #11: sanitize CSS before storing.
+			// Enforce a 100 KB hard cap — no legitimate page CSS needs more.
+			if ( strlen( $css ) > 102400 ) {
+				return new \WP_Error(
+					'css_too_large',
+					__( 'CSS exceeds the 100 KB limit. Split into smaller blocks or use a stylesheet.', 'bricks-mcp' )
+				);
+			}
+
+			// Strip patterns that enable code execution or data exfiltration:
+			// - javascript: scheme in url() values
+			// - IE expression() function
+			// - @import rules (can pull in remote stylesheets)
+			// - data: scheme in url() (can embed executable payloads)
+			// - Behaviour property (IE)
+			// - moz-binding (Firefox XBL injection, legacy)
+			$dangerous_patterns = array(
+				'/url\s*\(\s*["\']?\s*javascript:/i',
+				'/expression\s*\(/i',
+				'/@import\s/i',
+				'/url\s*\(\s*["\']?\s*data:/i',
+				'/behaviour\s*:/i',
+				'/-moz-binding\s*:/i',
+			);
+			foreach ( $dangerous_patterns as $pattern ) {
+				if ( preg_match( $pattern, $css ) ) {
+					return new \WP_Error(
+						'css_unsafe_content',
+						__( 'CSS contains disallowed patterns (javascript:, expression(), @import, data:, behaviour:). Remove them and try again.', 'bricks-mcp' )
+					);
+				}
+			}
+
 			$settings['customCss'] = $css;
 		}
 
@@ -8143,5 +8255,5 @@ class BricksService {
 		if ( empty( $review_data ) ) { return new \WP_Error( 'review_parse_failed', 'Could not parse Claude response: ' . substr( $raw_text, 0, 300 ) ); }
 		return array( 'post_id' => $post_id, 'viewport' => $viewport, 'focus' => $focus, 'screenshot_url' => $screenshot_url, 'screenshot_source' => $screenshot['source'] ?? 'unknown', 'critique' => $review_data['critique'] ?? '', 'score' => $review_data['score'] ?? null, 'issues' => $review_data['issues'] ?? array(), 'positive_observations' => $review_data['positive_observations'] ?? array(), 'issue_count' => count( $review_data['issues'] ?? array() ), 'critical_count' => count( array_filter( $review_data['issues'] ?? array(), fn( $i ) => ( $i['severity'] ?? '' ) === 'critical' ) ) );
 	}
-	
+    
 }

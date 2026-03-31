@@ -1,9 +1,76 @@
 <?php
 /**
+ * File: includes/MCP/Router.php
+ *
  * MCP Router implementation.
  *
  * @package BricksMCP
  * @license GPL-2.0-or-later
+ * @version 1.5.5
+ *
+ * Changelog:
+ * ----------
+ * 1.5.5 — 2026-03-31
+ *   - FIX (Code quality): Removed 4 orphaned/displaced PHPDoc blocks that had
+ *                         been separated from their function declarations (lines
+ *                         1877-1913). Restored correct @param/@return docblocks
+ *                         on require_bricks(), enrich_error(), apply_smart_defaults(),
+ *                         and apply_minimal_format(). No functional change.
+ *
+ * 1.5.4 — 2026-03-31
+ *   - FIX (Critical): register_output_schemas() — 6 occurrences of corrupted
+ *                     array access syntax ($this->toolsarray('key')) restored to
+ *                     correct PHP array notation ($this->tools['key']). The
+ *                     corruption caused a fatal PHP parse error on every request,
+ *                     making the entire MCP endpoint return HTTP 500 and preventing
+ *                     any tool from executing.
+ *
+ * 1.5.3 — 2026-03-31
+ *   - FIX (Critical): tool_page_diagnose(), tool_page_spacing_audit(),
+ *                     tool_page_screenshot(), tool_page_visual_review() —
+ *                     All $args array accesses were corrupted as $argsarray('key')
+ *                     (12 occurrences across 4 methods) causing a fatal PHP parse
+ *                     error that crashed the entire MCP endpoint with HTTP 500.
+ *                     Corrected to $args['key'] throughout.
+ *   - FIX (Consistency): Changed tool_page_diagnose(), tool_page_spacing_audit(),
+ *                        tool_page_screenshot(), tool_page_visual_review() from
+ *                        public to private to match all other tool handler methods.
+ *   - FIX (Code quality): Expanded single-line if/return blocks in the 4 new
+ *                         handlers to proper multi-line format. Removed redundant
+ *                         is_wp_error() ternary no-ops (result was returned either
+ *                         way). Added proper PHPDoc blocks to all 4 methods.
+ *   - FIX (Type safety): Added explicit (string) cast on $viewport and $focus
+ *                        before passing to BricksService methods.
+ *
+ * 1.5.2 — 2026-03-31
+ *   - FIX (Issue 9):    tool_get_posts() — replaced unsafe wp_list_pluck() +
+ *                       update_postmeta_cache() with null-safe ID extraction to
+ *                       prevent "Attempt to assign property thumbnails_cached on
+ *                       array" crash caused by WP Rocket / Rank Math hook interference.
+ *   - FIX (GitHub #5):  tool_get_posts() — added $allowed_orderby allowlist and
+ *                       validated post_type against get_post_types() to prevent
+ *                       WP_Query parameter injection.
+ *   - FIX (GitHub #6):  tool_get_users() — validated role parameter against
+ *                       wp_roles()->get_names() to prevent WP_User_Query returning
+ *                       all users when an invalid role string is supplied.
+ *   - FIX (Issue 11 /
+ *     GitHub #8):       tool_get_users() — added server-side manage_options
+ *                       capability check before exposing PII (email/login). Any
+ *                       authenticated MCP client could previously pass include_pii=true
+ *                       regardless of their WordPress role.
+ *   - FIX (Issue 5a):   Corrected misplaced PHPDoc blocks — register_output_schemas()
+ *                       and require_bricks() docblocks were displaced from their
+ *                       function declarations.
+ *   - FIX (Issue 5b):   register_bricks_tools() changed from public to private.
+ *                       Updated add_action() calls to use closures so WordPress
+ *                       can invoke the private method correctly.
+ *   - FIX (Issue 5c):   Normalised array syntax to array() in register_output_schemas()
+ *                       and PR#29 tool registrations / handlers (was using [] short
+ *                       syntax inconsistently against codebase standard).
+ *   - FIX (Issue 5d):   Moved apply_filters('bricks_mcp_tools') from
+ *                       register_default_tools() (fired with only 2 tools registered)
+ *                       to the end of register_bricks_tools() (fires after all tools
+ *                       are registered). Third-party filter hooks now see the full list.
  */
 
 declare(strict_types=1);
@@ -98,8 +165,8 @@ final class Router {
 			$this->register_bricks_tools();
 			$this->register_output_schemas();
 		} else {
-			add_action( 'after_setup_theme', array( $this, 'register_bricks_tools' ), 20 );
-			add_action( 'after_setup_theme', array( $this, 'register_output_schemas' ), 25 );
+			add_action( 'after_setup_theme', function(): void { $this->register_bricks_tools(); }, 20 );
+			add_action( 'after_setup_theme', function(): void { $this->register_output_schemas(); }, 25 );
 		}
 
 		// Flush schema cache when plugins are updated.
@@ -133,8 +200,7 @@ final class Router {
 					),
 				),
 			),
-			array( $this, 'tool_get_site_info' )
-		,
+			array( $this, 'tool_get_site_info' ),
 		array(
 			'readOnlyHint'    => true,
 			'destructiveHint' => false,
@@ -196,8 +262,7 @@ final class Router {
 				),
 				'required'   => array( 'action' ),
 			),
-			array( $this, 'tool_wordpress' )
-		,
+			array( $this, 'tool_wordpress' ),
 		array(
 			'readOnlyHint'    => true,
 			'destructiveHint' => false,
@@ -206,14 +271,9 @@ final class Router {
 		)
 		);
 
-		/**
-		 * Filter the registered MCP tools.
-		 *
-		 * Allows other plugins to add or modify MCP tools.
-		 *
-		 * @param array $tools Registered tools.
-		 */
-		$this->tools = apply_filters( 'bricks_mcp_tools', $this->tools );
+		// NOTE: apply_filters( 'bricks_mcp_tools' ) is intentionally NOT called here.
+		// It is called at the end of register_bricks_tools() after ALL tools have been
+		// registered, so third-party plugins see the complete tool list. (Issue 5d fix)
 	}
 
 	/**
@@ -420,10 +480,20 @@ final class Router {
 	private function tool_get_posts( array $args ): array {
 		$order = isset( $args['order'] ) && 'ASC' === strtoupper( (string) $args['order'] ) ? 'ASC' : 'DESC';
 
+		// GitHub #5: validate orderby against an allowlist to prevent WP_Query parameter injection.
+		$allowed_orderby = array( 'date', 'title', 'modified', 'ID', 'author', 'name', 'menu_order' );
+		$requested_orderby = isset( $args['orderby'] ) ? sanitize_text_field( (string) $args['orderby'] ) : 'date';
+		$orderby = in_array( $requested_orderby, $allowed_orderby, true ) ? $requested_orderby : 'date';
+
+		// GitHub #5: validate post_type against registered post types to prevent parameter injection.
+		$requested_post_type = isset( $args['post_type'] ) ? sanitize_text_field( (string) $args['post_type'] ) : 'post';
+		$registered_types    = array_keys( get_post_types() );
+		$post_type           = in_array( $requested_post_type, $registered_types, true ) ? $requested_post_type : 'post';
+
 		$query_args = array(
-			'post_type'      => isset( $args['post_type'] ) ? sanitize_text_field( (string) $args['post_type'] ) : 'post',
+			'post_type'      => $post_type,
 			'posts_per_page' => isset( $args['posts_per_page'] ) ? min( absint( $args['posts_per_page'] ), 100 ) : 10,
-			'orderby'        => isset( $args['orderby'] ) ? sanitize_text_field( (string) $args['orderby'] ) : 'date',
+			'orderby'        => $orderby,
 			'order'          => $order,
 			'post_status'    => 'publish',
 			's'              => isset( $args['s'] ) ? sanitize_text_field( (string) $args['s'] ) : '',
@@ -435,8 +505,26 @@ final class Router {
 
 		$posts = get_posts( $query_args );
 
-		// Prime meta cache (includes thumbnail IDs) to avoid N+1 queries for get_the_post_thumbnail_url().
-		update_postmeta_cache( wp_list_pluck( $posts, 'ID' ) );
+		// Issue 9: null-safe meta cache priming — third-party plugins (e.g. WP Rocket, Rank Math)
+		// can modify the posts array mid-hook so that entries are plain arrays rather than WP_Post
+		// objects. wp_list_pluck() + update_postmeta_cache() then crashes with
+		// "Attempt to assign property thumbnails_cached on array". Extract IDs safely instead.
+		$post_ids = array_values(
+			array_filter(
+				array_map(
+					function ( $p ) {
+						return is_object( $p ) && isset( $p->ID ) ? (int) $p->ID : 0;
+					},
+					$posts
+				),
+				function ( $id ) {
+					return $id > 0;
+				}
+			)
+		);
+		if ( ! empty( $post_ids ) ) {
+			update_postmeta_cache( $post_ids );
+		}
 
 		$result = array();
 
@@ -508,13 +596,21 @@ final class Router {
 	 * @param array<string, mixed> $args Tool arguments.
 	 * @return array<int, array<string, mixed>> Users list.
 	 */
-	private function tool_get_users( array $args ): array {
+	private function tool_get_users( array $args ): array|\WP_Error {
 		$allowed_orderby = array( 'display_name', 'registered', 'ID' );
 		$allowed_order   = array( 'ASC', 'DESC' );
 
+		// GitHub #6: validate role against registered WordPress roles to prevent WP_User_Query
+		// returning all users when an invalid or empty role string is supplied.
+		$requested_role    = isset( $args['role'] ) ? sanitize_text_field( (string) $args['role'] ) : '';
+		$registered_roles  = array_keys( wp_roles()->get_names() );
+		$role              = ( '' === $requested_role || in_array( $requested_role, $registered_roles, true ) )
+			? $requested_role
+			: '';
+
 		$query_args = array(
 			'number'  => min( isset( $args['number'] ) ? absint( $args['number'] ) : 10, 100 ),
-			'role'    => isset( $args['role'] ) ? sanitize_text_field( (string) $args['role'] ) : '',
+			'role'    => $role,
 			'orderby' => isset( $args['orderby'] ) && in_array( $args['orderby'], $allowed_orderby, true )
 				? $args['orderby']
 				: 'display_name',
@@ -527,7 +623,10 @@ final class Router {
 		$users  = get_users( $query_args );
 		$result = array();
 
-		$include_pii = ! empty( $args['include_pii'] );
+		// Issue 11 / GitHub #8: include_pii requires the caller to hold manage_options capability.
+		// Without this server-side check any authenticated MCP client could pass include_pii=true
+		// and extract all user emails and logins regardless of their WordPress role.
+		$include_pii = ! empty( $args['include_pii'] ) && current_user_can( 'manage_options' );
 
 		foreach ( $users as $user ) {
 			$user_data = array(
@@ -589,14 +688,6 @@ final class Router {
 	}
 
 	/**
-	 * Register Bricks Builder-specific tools.
-	 *
-	 * Only registers tools if Bricks Builder is active (STNG-05 gate).
-	 * Non-Bricks tools continue working regardless of Bricks status.
-	 *
-	 * @return void
-	 */
-		/**
 	 * Register output schemas for key tools (Issue #25).
 	 *
 	 * Adds structured output type hints so MCP clients can validate
@@ -605,81 +696,94 @@ final class Router {
 	 * @return void
 	 */
 	public function register_output_schemas(): void {
-		$page_schema = [
+		$page_schema = array(
 			'type' => 'object',
-			'properties' => [
-				'id'            => ['type'=>'integer'],
-				'title'         => ['type'=>'string'],
-				'status'        => ['type'=>'string'],
-				'permalink'     => ['type'=>'string'],
-				'element_count' => ['type'=>'integer'],
-			],
-		];
-		$element_schema = [
+			'properties' => array(
+				'id'            => array('type'=>'integer'),
+				'title'         => array('type'=>'string'),
+				'status'        => array('type'=>'string'),
+				'permalink'     => array('type'=>'string'),
+				'element_count' => array('type'=>'integer'),
+			),
+		);
+		$element_schema = array(
 			'type' => 'object',
-			'properties' => [
-				'id'         => ['type'=>'string'],
-				'name'       => ['type'=>'string'],
-				'parent'     => ['type'=>['string','integer']],
-				'children'   => ['type'=>'array'],
-				'settings'   => ['type'=>'object'],
-			],
-		];
-		$diagnose_schema = [
+			'properties' => array(
+				'id'         => array('type'=>'string'),
+				'name'       => array('type'=>'string'),
+				'parent'     => array('type'=>array('string','integer')),
+				'children'   => array('type'=>'array'),
+				'settings'   => array('type'=>'object'),
+			),
+		);
+		$diagnose_schema = array(
 			'type' => 'object',
-			'properties' => [
-				'post_id'       => ['type'=>'integer'],
-				'status'        => ['type'=>'string','enum'=>['clean','warnings','errors']],
-				'issue_count'   => ['type'=>'integer'],
-				'error_count'   => ['type'=>'integer'],
-				'warning_count' => ['type'=>'integer'],
-				'issues'        => [
+			'properties' => array(
+				'post_id'       => array('type'=>'integer'),
+				'status'        => array('type'=>'string','enum'=>array('clean','warnings','errors')),
+				'issue_count'   => array('type'=>'integer'),
+				'error_count'   => array('type'=>'integer'),
+				'warning_count' => array('type'=>'integer'),
+				'issues'        => array(
 					'type'=>'array',
-					'items'=>[
+					'items'=>array(
 						'type'=>'object',
-						'properties'=>[
-							'element_id'=>['type'=>['string','null']],
-							'severity'  =>['type'=>'string','enum'=>['error','warning']],
-							'type'      =>['type'=>'string'],
-							'message'   =>['type'=>'string'],
-							'fix'       =>['type'=>'string'],
-						],
-					],
-				],
-			],
-		];
+						'properties'=>array(
+							'element_id'=>array('type'=>array('string','null')),
+							'severity'  =>array('type'=>'string','enum'=>array('error','warning')),
+							'type'      =>array('type'=>'string'),
+							'message'   =>array('type'=>'string'),
+							'fix'       =>array('type'=>'string'),
+						),
+					),
+				),
+			),
+		);
 
 		// Attach output schemas to registered tools.
 		if ( isset( $this->tools['page'] ) ) {
-			$this->tools['page']['outputSchema'] = ['type'=>'object','description'=>'Page data, element tree, or list of pages depending on action'];
+			$this->tools['page']['outputSchema'] = array( 'type' => 'object', 'description' => 'Page data, element tree, or list of pages depending on action' );
 		}
 		if ( isset( $this->tools['page_diagnose'] ) ) {
 			$this->tools['page_diagnose']['outputSchema'] = $diagnose_schema;
 		}
 		if ( isset( $this->tools['element'] ) ) {
-			$this->tools['element']['outputSchema'] = ['type'=>'object','description'=>'Element operation result with affected element ID and page element count'];
+			$this->tools['element']['outputSchema'] = array( 'type' => 'object', 'description' => 'Element operation result with affected element ID and page element count' );
 		}
 		if ( isset( $this->tools['template'] ) ) {
-			$this->tools['template']['outputSchema'] = ['type'=>'object','description'=>'Template data including id, title, type, status, and element array'];
+			$this->tools['template']['outputSchema'] = array( 'type' => 'object', 'description' => 'Template data including id, title, type, status, and element array' );
 		}
 		if ( isset( $this->tools['global_class'] ) ) {
-			$this->tools['global_class']['outputSchema'] = ['type'=>'object','description'=>'Global class operation result with class name, id, and styles'];
+			$this->tools['global_class']['outputSchema'] = array( 'type' => 'object', 'description' => 'Global class operation result with class name, id, and styles' );
 		}
 		if ( isset( $this->tools['get_site_info'] ) ) {
-			$this->tools['get_site_info']['outputSchema'] = [
-				'type'=>'object',
-				'properties'=>[
-					'name'       =>['type'=>'string'],
-					'url'        =>['type'=>'string'],
-					'version'    =>['type'=>'string'],
-					'language'   =>['type'=>'string'],
-					'timezone'   =>['type'=>'string'],
-				],
-			];
+			$this->tools['get_site_info']['outputSchema'] = array(
+				'type'       => 'object',
+				'properties' => array(
+					'name'     => array( 'type' => 'string' ),
+					'url'      => array( 'type' => 'string' ),
+					'version'  => array( 'type' => 'string' ),
+					'language' => array( 'type' => 'string' ),
+					'timezone' => array( 'type' => 'string' ),
+				),
+			);
 		}
 	}
 
-	public function register_bricks_tools(): void {
+	/**
+	 * Register Bricks Builder-specific tools.
+	 *
+	 * Only registers tools if Bricks Builder is active (STNG-05 gate).
+	 * Non-Bricks tools continue working regardless of Bricks status.
+	 * Called via add_action( 'after_setup_theme' ) from the constructor.
+	 *
+	 * Issue 5b: private — only invoked from the constructor / action hook.
+	 * Issue 5d: apply_filters( 'bricks_mcp_tools' ) fires HERE, after ALL
+	 *           tools are registered, so third-party code sees the full list.
+	 *
+	 * @return void
+	 */
+	private function register_bricks_tools(): void {
 		// Gate: skip registration when Bricks is not installed.
 		if ( ! $this->bricks_service->is_bricks_active() ) {
 			return;
@@ -699,8 +803,7 @@ final class Router {
 					),
 				),
 			),
-			array( $this, 'tool_get_builder_guide' )
-		,
+			array( $this, 'tool_get_builder_guide' ),
 		array(
 			'readOnlyHint'    => true,
 			'destructiveHint' => false,
@@ -757,14 +860,14 @@ final class Router {
 				),
 				'required'   => array( 'action' ),
 			),
-			array( $this, 'tool_bricks' )
-		,
-array(
-'readOnlyHint'=>false,
-'destructiveHint'=>false,
-'idempotentHint'=>false,
-'openWorldHint'=>false,
-));
+			array( $this, 'tool_bricks' ),
+		array(
+			'readOnlyHint'    => false,
+			'destructiveHint' => false,
+			'idempotentHint'  => false,
+			'openWorldHint'   => false,
+		)
+		);
 
 		// Page consolidated tool (replaces list_pages, search_pages, get_bricks_content, create_bricks_page, update_bricks_content, update_page, delete_page, duplicate_page, get_page_settings, update_page_settings + SEO).
 		$this->register_tool(
@@ -929,9 +1032,9 @@ array(
 			)
 		);
 
-		$this->register_tool( 'page_screenshot', __( 'Screenshots a published page via Microlink API (free, 50/day, no key needed) with ApiFlash fallback (free key in MCP Settings). Returns base64 image and CDN URL. Use before page_visual_review or to visually verify changes. Read-only — calls external API.', 'bricks-mcp' ), [ 'type' => 'object', 'properties' => [ 'post_id' => [ 'type' => 'integer', 'description' => 'Post/page ID to screenshot (required)' ], 'viewport' => [ 'type' => 'string', 'enum' => [ 'desktop', 'tablet', 'mobile' ], 'description' => 'Viewport size (default: desktop)' ], 'fresh' => [ 'type' => 'boolean', 'description' => 'Bypass CDN cache for a fresh capture (default: false)' ] ], 'required' => [ 'post_id' ] ], [ $this, 'tool_page_screenshot' ], [ 'readOnlyHint' => true, 'destructiveHint' => false, 'idempotentHint' => false, 'openWorldHint' => true ] );
+		$this->register_tool( 'page_screenshot', __( 'Screenshots a published page via Microlink API (free, 50/day, no key needed) with ApiFlash fallback (free key in MCP Settings). Returns base64 image and CDN URL. Use before page_visual_review or to visually verify changes. Read-only — calls external API.', 'bricks-mcp' ), array( 'type' => 'object', 'properties' => array( 'post_id' => array( 'type' => 'integer', 'description' => 'Post/page ID to screenshot (required)' ), 'viewport' => array( 'type' => 'string', 'enum' => array( 'desktop', 'tablet', 'mobile' ), 'description' => 'Viewport size (default: desktop)' ), 'fresh' => array( 'type' => 'boolean', 'description' => 'Bypass CDN cache for a fresh capture (default: false)' ) ), 'required' => array( 'post_id' ) ), array( $this, 'tool_page_screenshot' ), array( 'readOnlyHint' => true, 'destructiveHint' => false, 'idempotentHint' => false, 'openWorldHint' => true ) );
 
-		$this->register_tool( 'page_visual_review', __( 'Screenshots a page and sends the image to Claude Vision (Anthropic API) for structured visual review. Returns a natural language critique, issues list with severity, and positive observations. Requires Anthropic API key in MCP Settings. Depends on page_screenshot working correctly.', 'bricks-mcp' ), [ 'type' => 'object', 'properties' => [ 'post_id' => [ 'type' => 'integer', 'description' => 'Post/page ID to review (required)' ], 'viewport' => [ 'type' => 'string', 'enum' => [ 'desktop', 'tablet', 'mobile' ], 'description' => 'Viewport size (default: desktop)' ], 'focus' => [ 'type' => 'string', 'enum' => [ 'spacing', 'alignment', 'colors', 'all' ], 'description' => 'Review focus area (default: all)' ] ], 'required' => [ 'post_id' ] ], [ $this, 'tool_page_visual_review' ], [ 'readOnlyHint' => true, 'destructiveHint' => false, 'idempotentHint' => false, 'openWorldHint' => true ] );
+		$this->register_tool( 'page_visual_review', __( 'Screenshots a page and sends the image to Claude Vision (Anthropic API) for structured visual review. Returns a natural language critique, issues list with severity, and positive observations. Requires Anthropic API key in MCP Settings. Depends on page_screenshot working correctly.', 'bricks-mcp' ), array( 'type' => 'object', 'properties' => array( 'post_id' => array( 'type' => 'integer', 'description' => 'Post/page ID to review (required)' ), 'viewport' => array( 'type' => 'string', 'enum' => array( 'desktop', 'tablet', 'mobile' ), 'description' => 'Viewport size (default: desktop)' ), 'focus' => array( 'type' => 'string', 'enum' => array( 'spacing', 'alignment', 'colors', 'all' ), 'description' => 'Review focus area (default: all)' ) ), 'required' => array( 'post_id' ) ), array( $this, 'tool_page_visual_review' ), array( 'readOnlyHint' => true, 'destructiveHint' => false, 'idempotentHint' => false, 'openWorldHint' => true ) );
 
 		// Element consolidated tool (replaces add_element, update_element, remove_element).
 		$this->register_tool(
@@ -1001,14 +1104,14 @@ array(
 				),
 				'required'   => array( 'action' ),
 			),
-			array( $this, 'tool_element' )
-		,
-array(
-'readOnlyHint'=>false,
-'destructiveHint'=>false,
-'idempotentHint'=>false,
-'openWorldHint'=>false,
-));
+			array( $this, 'tool_element' ),
+		array(
+			'readOnlyHint'    => false,
+			'destructiveHint' => false,
+			'idempotentHint'  => false,
+			'openWorldHint'   => false,
+		)
+		);
 
 		// Template consolidated tool (replaces list_templates, get_template_content, create_template, update_template, delete_template, duplicate_template).
 		$this->register_tool(
@@ -1124,8 +1227,7 @@ array(
 				),
 				'required'   => array( 'action' ),
 			),
-			array( $this, 'tool_template_condition' )
-		,
+			array( $this, 'tool_template_condition' ),
 		array(
 			'readOnlyHint'    => false,
 			'destructiveHint' => false,
@@ -1157,8 +1259,7 @@ array(
 				),
 				'required'   => array( 'action' ),
 			),
-			array( $this, 'tool_template_taxonomy' )
-		,
+			array( $this, 'tool_template_taxonomy' ),
 		array(
 			'readOnlyHint'    => false,
 			'destructiveHint' => true,
@@ -1234,7 +1335,7 @@ array(
 					),
 					'classes_data'   => array(
 						'type'        => 'object',
-						'description' => __( 'Global classes JSON data to import (import_json: required). Array of class objects with "name" key, or {classes: [...], categories: [...]}.', 'bricks-mcp' ),
+						'description' => __( 'Global classes JSON data to import (import_json: required). Array of class objects with "name" key, or {classes: array(...), categories: array(...)}.', 'bricks-mcp' ),
 					),
 				),
 				'required'   => array( 'action' ),
@@ -1287,8 +1388,7 @@ array(
 				),
 				'required'   => array( 'action' ),
 			),
-			array( $this, 'tool_theme_style' )
-		,
+			array( $this, 'tool_theme_style' ),
 		array(
 			'readOnlyHint'    => false,
 			'destructiveHint' => true,
@@ -1300,7 +1400,7 @@ array(
 		// Typography scale consolidated tool (replaces get_typography_scales, create_typography_scale, update_typography_scale, delete_typography_scale).
 		$this->register_tool(
 			'typography_scale',
-			__( "Manage Bricks typography scales — CSS custom property steps (--text-sm, --text-md, etc.) that generate utility classes. Use var(--prefix-step) in typography settings to reference scales.\n\nWHEN: Create a scale to establish a consistent type system across the site. Use list to check existing scales before creating. Scales generate both CSS variables and utility classes automatically.\n\nActions:\n- list: All scales with prefix and steps\n- create: New scale (requires: name, prefix=--text-, steps=[{name,value}])\n- update: Modify scale (requires: scale_id)\n- delete: Remove scale (requires: scale_id) — CSS variables removed after Bricks regenerates", 'bricks-mcp' ),
+			__( "Manage Bricks typography scales — CSS custom property steps (--text-sm, --text-md, etc.) that generate utility classes. Use var(--prefix-step) in typography settings to reference scales.\n\nWHEN: Create a scale to establish a consistent type system across the site. Use list to check existing scales before creating. Scales generate both CSS variables and utility classes automatically.\n\nActions:\n- list: All scales with prefix and steps\n- create: New scale (requires: name, prefix=--text-, steps=array({name,value}))\n- update: Modify scale (requires: scale_id)\n- delete: Remove scale (requires: scale_id) — CSS variables removed after Bricks regenerates", 'bricks-mcp' ),
 			array(
 				'type'       => 'object',
 				'properties' => array(
@@ -1336,8 +1436,7 @@ array(
 				),
 				'required'   => array( 'action' ),
 			),
-			array( $this, 'tool_typography_scale' )
-		,
+			array( $this, 'tool_typography_scale' ),
 		array(
 			'readOnlyHint'    => false,
 			'destructiveHint' => true,
@@ -1385,8 +1484,7 @@ array(
 				),
 				'required'   => array( 'action' ),
 			),
-			array( $this, 'tool_color_palette' )
-		,
+			array( $this, 'tool_color_palette' ),
 		array(
 			'readOnlyHint'    => false,
 			'destructiveHint' => true,
@@ -1451,14 +1549,14 @@ array(
 				),
 				'required'   => array( 'action' ),
 			),
-			array( $this, 'tool_global_variable' )
-		,
-array(
-'readOnlyHint'=>false,
-'destructiveHint'=>true,
-'idempotentHint'=>false,
-'openWorldHint'=>false,
-));
+			array( $this, 'tool_global_variable' ),
+		array(
+			'readOnlyHint'    => false,
+			'destructiveHint' => true,
+			'idempotentHint'  => false,
+			'openWorldHint'   => false,
+		)
+		);
 
 		// Media consolidated tool (replaces search_unsplash, sideload_image, get_media_library, set_featured_image, remove_featured_image, get_image_element_settings).
 		$this->register_tool(
@@ -1520,14 +1618,14 @@ array(
 				),
 				'required'   => array( 'action' ),
 			),
-			array( $this, 'tool_media' )
-		,
-array(
-'readOnlyHint'=>false,
-'destructiveHint'=>false,
-'idempotentHint'=>false,
-'openWorldHint'=>true,
-));
+			array( $this, 'tool_media' ),
+		array(
+			'readOnlyHint'    => false,
+			'destructiveHint' => false,
+			'idempotentHint'  => false,
+			'openWorldHint'   => true,
+		)
+		);
 
 		// Menu consolidated tool (replaces create_menu, update_menu, delete_menu, get_menu, list_menus, set_menu_items, assign_menu, unassign_menu, list_menu_locations).
 		$this->register_tool(
@@ -1560,8 +1658,7 @@ array(
 				),
 				'required'   => array( 'action' ),
 			),
-			array( $this, 'tool_menu' )
-		,
+			array( $this, 'tool_menu' ),
 		array(
 			'readOnlyHint'    => false,
 			'destructiveHint' => true,
@@ -1633,14 +1730,14 @@ array(
 				),
 				'required'   => array( 'action' ),
 			),
-			array( $this, 'tool_component' )
-		,
-array(
-'readOnlyHint'=>false,
-'destructiveHint'=>true,
-'idempotentHint'=>false,
-'openWorldHint'=>false,
-));
+			array( $this, 'tool_component' ),
+		array(
+			'readOnlyHint'    => false,
+			'destructiveHint' => true,
+			'idempotentHint'  => false,
+			'openWorldHint'   => false,
+		)
+		);
 
 		// WooCommerce consolidated tool (status, elements, dynamic tags, template scaffolding).
 		$this->register_tool(
@@ -1683,8 +1780,7 @@ array(
 				),
 				'required'   => array( 'action' ),
 			),
-			array( $this, 'tool_woocommerce' )
-		,
+			array( $this, 'tool_woocommerce' ),
 		array(
 			'readOnlyHint'    => false,
 			'destructiveHint' => false,
@@ -1721,8 +1817,7 @@ array(
 				),
 				'required'   => array( 'action' ),
 			),
-			array( $this, 'tool_font' )
-		,
+			array( $this, 'tool_font' ),
 		array(
 			'readOnlyHint'    => false,
 			'destructiveHint' => false,
@@ -1766,8 +1861,7 @@ array(
 				),
 				'required'   => array( 'action' ),
 			),
-			array( $this, 'tool_code' )
-		,
+			array( $this, 'tool_code' ),
 		array(
 			'readOnlyHint'    => false,
 			'destructiveHint' => true,
@@ -1775,36 +1869,19 @@ array(
 			'openWorldHint'   => false,
 		)
 		);
+
+		/**
+		 * Filter the registered MCP tools.
+		 *
+		 * Fires after ALL default and Bricks-specific tools have been registered,
+		 * so third-party plugins see the complete tool list. (Issue 5d fix)
+		 *
+		 * @param array $tools Registered tools.
+		 */
+		$this->tools = apply_filters( 'bricks_mcp_tools', $this->tools );
 	}
 
 	/**
-	 * Require Bricks Builder to be active for a tool.
-	 *
-	 * Returns a WP_Error if Bricks is not active, null if it is active.
-	 *
-	 * @return \WP_Error|null WP_Error if Bricks required but not active, null if active.
-	 */
-		/**
-	 * Enrich a WP_Error with structured next-step guidance.
-	 *
-	 * Wraps the raw error in a structured array so AI clients get
-	 * actionable guidance alongside the error message.
-	 *
-	 * @param \WP_Error $error   The original error.
-	 * @param string    $hint    What the AI should do next.
-	 * @param string    $tool    Suggested tool to call next (optional).
-	 * @return \WP_Error The same error with enriched message.
-	 */
-		/**
-	 * Apply smart defaults to tool arguments to reduce required parameters.
-	 *
-	 * Injects sensible defaults so AI clients can call tools with fewer params.
-	 *
-	 * @param string               $tool_name Tool name.
-	 * @param array<string, mixed> $args      Raw arguments.
-	 * @return array<string, mixed> Arguments with defaults applied.
-	 */
-		/**
 	 * Apply minimal response format to strip verbose/redundant fields.
 	 *
 	 * When response_format=minimal is passed, removes large nested fields
@@ -1857,6 +1934,15 @@ array(
 		return $result;
 	}
 
+	/**
+	 * Apply smart defaults to tool arguments to reduce required parameters.
+	 *
+	 * Injects sensible defaults so AI clients can call tools with fewer params.
+	 *
+	 * @param string               $tool_name Tool name.
+	 * @param array<string, mixed> $args      Raw arguments.
+	 * @return array<string, mixed> Arguments with defaults applied.
+	 */
 	private function apply_smart_defaults( string $tool_name, array $args ): array {
 		switch ( $tool_name ) {
 			case 'page':
@@ -1925,6 +2011,17 @@ array(
 		return $args;
 	}
 
+	/**
+	 * Enrich a WP_Error with structured next-step guidance.
+	 *
+	 * Wraps the raw error in a structured array so AI clients get
+	 * actionable guidance alongside the error message.
+	 *
+	 * @param \WP_Error $error The original error.
+	 * @param string    $hint  What the AI should do next.
+	 * @param string    $tool  Suggested tool to call next (optional).
+	 * @return \WP_Error The same error with enriched message.
+	 */
 	private function enrich_error( \WP_Error $error, string $hint = '', string $tool = '' ): \WP_Error {
 		$data = array(
 			'error'      => $error->get_error_code(),
@@ -1940,6 +2037,13 @@ array(
 		return $error;
 	}
 
+	/**
+	 * Require Bricks Builder to be active for a tool.
+	 *
+	 * Returns a WP_Error if Bricks is not active, null if it is active.
+	 *
+	 * @return \WP_Error|null WP_Error if Bricks required but not active, null if active.
+	 */
 	private function require_bricks(): ?\WP_Error {
 		if ( ! $this->bricks_service->is_bricks_active() ) {
 			return new \WP_Error(
@@ -9782,7 +9886,13 @@ array(
 		);
 	}
 	
-	public function tool_page_diagnose( array $args ): array|\WP_Error {
+	/**
+	 * Tool handler: page_diagnose — pre-edit health check.
+	 *
+	 * @param array<string, mixed> $args Tool arguments.
+	 * @return array<string, mixed>|\WP_Error Diagnostics report or error.
+	 */
+	private function tool_page_diagnose( array $args ): array|\WP_Error {
 		$bricks_error = $this->require_bricks();
 		if ( null !== $bricks_error ) {
 			return $bricks_error;
@@ -9809,29 +9919,50 @@ array(
 
 		return $this->bricks_service->diagnose_page( $post_id );
 	}
-	
-	public function tool_page_spacing_audit( array $args ): array|\WP_Error {
+
+	/**
+	 * Tool handler: page_spacing_audit — spacing rhythm audit.
+	 *
+	 * @param array<string, mixed> $args Tool arguments.
+	 * @return array<string, mixed>|\WP_Error Audit result or error.
+	 */
+	private function tool_page_spacing_audit( array $args ): array|\WP_Error {
 		$post_id = absint( $args['post_id'] ?? 0 );
-		if ( $post_id <= 0 ) { return new \WP_Error( 'missing_param', 'post_id is required.' ); }
-		$result = $this->bricks_service->get_spacing_audit( $post_id );
-		return is_wp_error( $result ) ? $result : $result;
+		if ( $post_id <= 0 ) {
+			return new \WP_Error( 'missing_param', __( 'post_id is required.', 'bricks-mcp' ) );
+		}
+		return $this->bricks_service->get_spacing_audit( $post_id );
 	}
 
-	public function tool_page_screenshot( array $args ): array|\WP_Error {
+	/**
+	 * Tool handler: page_screenshot — capture page via external API.
+	 *
+	 * @param array<string, mixed> $args Tool arguments.
+	 * @return array<string, mixed>|\WP_Error Screenshot data or error.
+	 */
+	private function tool_page_screenshot( array $args ): array|\WP_Error {
 		$post_id  = absint( $args['post_id'] ?? 0 );
-		$viewport = in_array( $args['viewport'] ?? '', [ 'desktop', 'tablet', 'mobile' ], true ) ? $args['viewport'] : 'desktop';
+		$viewport = in_array( $args['viewport'] ?? '', array( 'desktop', 'tablet', 'mobile' ), true ) ? (string) $args['viewport'] : 'desktop';
 		$fresh    = (bool) ( $args['fresh'] ?? false );
-		if ( $post_id <= 0 ) { return new \WP_Error( 'missing_param', 'post_id is required.' ); }
-		$result = $this->bricks_service->take_screenshot( $post_id, $viewport, $fresh );
-		return is_wp_error( $result ) ? $result : $result;
+		if ( $post_id <= 0 ) {
+			return new \WP_Error( 'missing_param', __( 'post_id is required.', 'bricks-mcp' ) );
+		}
+		return $this->bricks_service->take_screenshot( $post_id, $viewport, $fresh );
 	}
 
-	public function tool_page_visual_review( array $args ): array|\WP_Error {
+	/**
+	 * Tool handler: page_visual_review — screenshot + Claude Vision critique.
+	 *
+	 * @param array<string, mixed> $args Tool arguments.
+	 * @return array<string, mixed>|\WP_Error Review data or error.
+	 */
+	private function tool_page_visual_review( array $args ): array|\WP_Error {
 		$post_id  = absint( $args['post_id'] ?? 0 );
-		$viewport = in_array( $args['viewport'] ?? '', [ 'desktop', 'tablet', 'mobile' ], true ) ? $args['viewport'] : 'desktop';
-		$focus    = in_array( $args['focus'] ?? '', [ 'spacing', 'alignment', 'colors', 'all' ], true ) ? $args['focus'] : 'all';
-		if ( $post_id <= 0 ) { return new \WP_Error( 'missing_param', 'post_id is required.' ); }
-		$result = $this->bricks_service->get_visual_review( $post_id, $viewport, $focus );
-		return is_wp_error( $result ) ? $result : $result;
+		$viewport = in_array( $args['viewport'] ?? '', array( 'desktop', 'tablet', 'mobile' ), true ) ? (string) $args['viewport'] : 'desktop';
+		$focus    = in_array( $args['focus'] ?? '', array( 'spacing', 'alignment', 'colors', 'all' ), true ) ? (string) $args['focus'] : 'all';
+		if ( $post_id <= 0 ) {
+			return new \WP_Error( 'missing_param', __( 'post_id is required.', 'bricks-mcp' ) );
+		}
+		return $this->bricks_service->get_visual_review( $post_id, $viewport, $focus );
 	}
 }
