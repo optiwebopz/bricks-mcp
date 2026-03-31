@@ -315,8 +315,13 @@ final class Router {
 	 *
 	 * @return array<int, array{name: string, description: string, inputSchema: array}> Tools list.
 	 */
-	public function get_available_tools(): array {
+	public function get_available_tools( string $protocol_version = '2025-03-26' ): array {
 		$tools = array();
+
+		// outputSchema was introduced in MCP spec 2025-11-25.
+		// Clients negotiating the older 2025-03-26 spec do not understand it
+		// and will silently fail on any tool that includes it.
+		$include_output_schema = ( '2025-11-25' === $protocol_version );
 
 		foreach ( $this->tools as $tool ) {
 			$entry = array(
@@ -327,7 +332,7 @@ final class Router {
 			if ( ! empty( $tool['annotations'] ) ) {
 				$entry['annotations'] = $tool['annotations'];
 			}
-			if ( ! empty( $tool['outputSchema'] ) ) {
+			if ( $include_output_schema && ! empty( $tool['outputSchema'] ) ) {
 				$entry['outputSchema'] = $tool['outputSchema'];
 			}
 			$tools[] = $entry;
